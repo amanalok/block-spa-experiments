@@ -13,5 +13,18 @@
 # emacs Files
 *~
 
+# Dataset files
+/squad_data/
+/serialized_data/
+
+# Models 
+*.bin
+
+# Mac
+.DS_Store
+
+# VS Code
+.vscode/
+
 # Python cache files
 __pycache__/

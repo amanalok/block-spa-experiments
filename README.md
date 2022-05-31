@@ -37,10 +37,18 @@ Pre-trained `BERT-base-uncased` fine-pruned with soft movement pruning on MNLI. 
 ## How to fine-prune?
 
 ### Setup
-
-The code relies on the 🤗 Transformers library. In addition to the dependencies listed in the [`examples`](https://github.com/huggingface/transformers/tree/master/examples) folder, you should install a few additional dependencies listed in the `requirements.txt` file: `pip install -r requirements.txt`.
+```bash
+pip install -e .
+```
+The code relies on the 🤗 Transformers library. In addition to the dependencies listed in the [`examples`](https://github.com/huggingface/transformers/tree/master/examples) folder, you should have installed a few additional dependencies listed in the `requirements.txt` file.
 
 Note that we built our experiments on top of a stabilized version of the library (commit https://github.com/huggingface/transformers/commit/352d5472b0c1dec0f420d606d16747d851b4bda8): we do not guarantee that everything is still compatible with the latest version of the master branch.
+
+Since an old version the transformer library is used, the bert-base-uncased model must be downloaded manually via 
+```bash
+cd bert-base-uncased/
+./download.sh
+```
 
 ### Fine-pruning with movement pruning
 
