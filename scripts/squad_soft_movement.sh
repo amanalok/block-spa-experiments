@@ -9,9 +9,6 @@ SQUAD_DATA=squad_data
 # wget -q https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json
 # cd ..
 
-
-# RANK=1 WORLD_SIZE=1 \
-    # --local_rank 0 \
 python block_movement_pruning/masked_run_squad.py \
     --output_dir $SERIALIZATION_DIR \
     --data_dir $SQUAD_DATA \
@@ -23,9 +20,19 @@ python block_movement_pruning/masked_run_squad.py \
     --per_gpu_train_batch_size 16 \
     --warmup_steps 5400 \
     --num_train_epochs 10 \
-    --learning_rate 3e-5 --mask_scores_learning_rate 1e-2 \
-    --initial_threshold 1 --final_threshold 0.15 \
-    --initial_warmup 1 --final_warmup 2 \
-    --pruning_method topK \
+    --learning_rate 3e-5 \
+    --mask_scores_learning_rate 1e-2 \
+    --initial_threshold 0 \
+    --final_threshold 0.1 \
+    --initial_warmup 1 \
+    --final_warmup 2 \
+    --pruning_method sigmoied_threshold \
     --mask_init constant \
     --mask_scale 0. \
+    --regularization l1 \
+    --final_lambda 1 \
+    # --overwrite_output_dir \
+    # --teacher_type bert \
+    # --teacher_name_or_path bert-base-uncased-squad \
+
+
