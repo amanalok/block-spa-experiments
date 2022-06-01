@@ -15,7 +15,6 @@
 
 # Dataset files
 /squad_data/
-/serialized_data/
 
 # Models 
 *.bin
@@ -25,6 +24,11 @@
 
 # VS Code
 .vscode/
+
+# Runs
+runs
+/runs/
+/seriealized_data/
 
 # Python cache files
 __pycache__/
