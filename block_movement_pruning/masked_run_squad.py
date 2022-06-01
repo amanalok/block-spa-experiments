@@ -1145,16 +1145,16 @@ def create_parser():
     )
     parser.add_argument(
         "--mask_block_rows",
-        default=1,
+        default=32,
         type=int,
-        help="Block row size for masks. Default is 1 -> general sparsity, not block sparsity.",
+        help="Block row size for masks. 1 for general sparsity, not block sparsity.",
     )
 
     parser.add_argument(
         "--mask_block_cols",
-        default=1,
+        default=32,
         type=int,
-        help="Block row size for masks. Default is 1 -> general sparsity, not block sparsity.",
+        help="Block row size for masks. 1 for general sparsity, not block sparsity.",
     )
 
     parser.add_argument(
@@ -1314,7 +1314,7 @@ def create_parser():
     parser.add_argument(
         "--save_steps",
         type=int,
-        default=500,
+        default=1000,
         help="Save checkpoint every X updates steps.",
     )
     parser.add_argument(
@@ -1682,22 +1682,10 @@ def main():
     if args.regularization == "null":
         args.regularization = None
 
-    sizes = [
-        (2, 1),
-        (8, 1),
-        (32, 1),
-        (128, 1),
-        (4, 4),
-        (8, 8),
-        (32, 32),
-        (1, 2),
-        (1, 8),
-        (1, 32),
-        (1, 128),
-    ][::]
+    # sizes = [(2, 1), (8, 1), (32, 1), (128, 1), (4, 4), (8, 8), (32, 32), (1, 2), (1, 8), (1, 32), (1, 128)][::]
     sizes = [(32, 32), (16, 16), (64, 64)]
 
-    for size in sizes:
+    for size in sizes[:1]:
         single_args = copy.deepcopy(args)
         single_args.mask_block_rows = size[0]
         single_args.mask_block_cols = size[1]
