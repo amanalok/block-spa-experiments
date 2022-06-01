@@ -17,7 +17,6 @@
 
 import argparse
 import glob
-import json
 import logging
 import os
 import random
@@ -81,11 +80,19 @@ def schedule_threshold(
     initial_warmup: int,
     final_warmup: int,
     final_lambda: float,
+    initial_ampere_temperature: float,
+    final_ampere_temperature: float,
+    initial_shuffling_temperature: float,
+    final_shuffling_temperature: float,
 ):
     if step <= initial_warmup * warmup_steps:
         threshold = initial_threshold
+        ampere_temperature = initial_ampere_temperature
+        shuffling_temperature = initial_shuffling_temperature
     elif step > (total_step - final_warmup * warmup_steps):
         threshold = final_threshold
+        ampere_temperature = final_ampere_temperature
+        shuffling_temperature = final_shuffling_temperature
     else:
         spars_warmup_steps = initial_warmup * warmup_steps
         spars_schedu_steps = (final_warmup + initial_warmup) * warmup_steps
@@ -93,8 +100,15 @@ def schedule_threshold(
         threshold = final_threshold + (initial_threshold - final_threshold) * (
             mul_coeff**3
         )
+        ampere_temperature = final_ampere_temperature + (
+            initial_ampere_temperature - final_ampere_temperature
+        ) * (mul_coeff**3)
+        shuffling_temperature = final_shuffling_temperature + (
+            initial_shuffling_temperature - final_shuffling_temperature
+        ) * (mul_coeff**3)
+
     regu_lambda = final_lambda * threshold / final_threshold
-    return threshold, regu_lambda
+    return threshold, regu_lambda, ampere_temperature, shuffling_temperature
 
 
 def regularization(model: nn.Module, mode: str):
@@ -292,7 +306,12 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
 
             model.train()
             batch = tuple(t.to(args.device) for t in batch)
-            threshold, regu_lambda = schedule_threshold(
+            (
+                threshold,
+                regu_lambda,
+                ampere_temperature,
+                shuffling_temperature,
+            ) = schedule_threshold(
                 step=global_step,
                 total_step=t_total,
                 warmup_steps=args.warmup_steps,
@@ -301,6 +320,10 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
                 final_warmup=args.final_warmup,
                 initial_warmup=args.initial_warmup,
                 final_lambda=args.final_lambda,
+                initial_ampere_temperature=args.initial_ampere_temperature,
+                final_ampere_temperature=args.final_ampere_temperature,
+                initial_shuffling_temperature=args.initial_shuffling_temperature,
+                final_shuffling_temperature=args.final_shuffling_temperature,
             )
             # Global TopK
             if args.global_topk:
@@ -337,7 +360,12 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
 
             if "masked" in args.model_type:
-                inputs["threshold"] = threshold
+                current_config = dict(
+                    threshold=threshold,
+                    ampere_temperature=ampere_temperature,
+                    shuffling_temperature=shuffling_temperature,
+                )
+                inputs["current_config"] = current_config
 
             outputs = model(**inputs)
             (
@@ -486,7 +514,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
 
                     for key, value in logs.items():
                         tb_writer.add_scalar(key, value, global_step)
-                    print(json.dumps({**logs, **{"step": global_step}}))
+                    # print(json.dumps({**logs, **{"step": global_step}}))
 
                 if (
                     args.local_rank in [-1, 0]
@@ -828,6 +856,33 @@ def main():
         type=float,
         help="Final value of the threshold (for scheduling).",
     )
+
+    parser.add_argument(
+        "--initial_ampere_temperature",
+        default=0.0,
+        type=float,
+        help="Initial value of the ampere temperature (for scheduling).",
+    )
+    parser.add_argument(
+        "--final_ampere_temperature",
+        default=20,
+        type=float,
+        help="Final value of the ampere temperature (for scheduling).",
+    )
+
+    parser.add_argument(
+        "--initial_shuffling_temperature",
+        default=0.1,
+        type=float,
+        help="Initial value of the shuffling temperature (for scheduling).",
+    )
+    parser.add_argument(
+        "--final_shuffling_temperature",
+        default=20,
+        type=float,
+        help="Final value of the shuffling temperature (for scheduling).",
+    )
+
     parser.add_argument(
         "--initial_warmup",
         default=1,
@@ -860,6 +915,58 @@ def main():
         default=0.0,
         type=float,
         help="Initialization parameter for the chosen initialization method.",
+    )
+    parser.add_argument(
+        "--mask_block_rows",
+        default=32,
+        type=int,
+        help="Block row size for masks. 1 for general sparsity, not block sparsity.",
+    )
+
+    parser.add_argument(
+        "--mask_block_cols",
+        default=32,
+        type=int,
+        help="Block row size for masks. 1 for general sparsity, not block sparsity.",
+    )
+    parser.add_argument(
+        "--ampere_pruning_method",
+        default="disabled",
+        type=str,
+        help="Pruning Method (annealing: softmaxing mask values with temperature).",
+    )
+    parser.add_argument(
+        "--ampere_mask_init",
+        default="constant",
+        type=str,
+        help="Initialization method for the ampere mask scores",
+    )
+
+    parser.add_argument(
+        "--ampere_mask_scale",
+        default=0.0,
+        type=float,
+        help="Initialization parameter for the chosen ampere mask initialization method.",
+    )
+
+    parser.add_argument(
+        "--shuffling_method",
+        default="disabled",
+        type=str,
+        help="Shuffling Method (annealing: softmaxing permutation scores with temperature).",
+    )
+
+    parser.add_argument(
+        "--in_shuffling_group",
+        default="4",
+        type=int,
+        help="Shuffling group size for matrix input (with shuffling_method == annealing).",
+    )
+    parser.add_argument(
+        "--out_shuffling_group",
+        default="4",
+        type=int,
+        help="Shuffling group size for matrix output (with shuffling_method == annealing).",
     )
 
     parser.add_argument(
@@ -953,7 +1060,7 @@ def main():
     parser.add_argument(
         "--save_steps",
         type=int,
-        default=50,
+        default=1000,
         help="Save checkpoint every X updates steps.",
     )
     parser.add_argument(
@@ -1067,6 +1174,14 @@ def main():
         pruning_method=args.pruning_method,
         mask_init=args.mask_init,
         mask_scale=args.mask_scale,
+        mask_block_rows=args.mask_block_rows,
+        mask_block_cols=args.mask_block_cols,
+        ampere_pruning_method=args.ampere_pruning_method,
+        ampere_mask_init=args.ampere_mask_init,
+        ampere_mask_scale=args.ampere_mask_scale,
+        shuffling_method=args.shuffling_method,
+        in_shuffling_group=args.in_shuffling_group,
+        out_shuffling_group=args.out_shuffling_group,
     )
     tokenizer = tokenizer_class.from_pretrained(
         args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,
