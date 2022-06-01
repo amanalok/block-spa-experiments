@@ -252,14 +252,14 @@ class DimensionShuffler(nn.Module):
 
         return s_out
 
-        s_ref = s.matmul(matrix.t())  # REFERENCE
+        # s_ref = s.matmul(matrix.t())  # REFERENCE
 
-        max_std = (s_out - s_ref).std().item()
-        max_diff = (s_out - s_ref).abs().max().item()
-        if max_diff > 0.1:
-            print("max difference", max_diff)
+        # max_std = (s_out - s_ref).std().item()
+        # max_diff = (s_out - s_ref).abs().max().item()
+        # if max_diff > 0.1:
+        #     print("max difference", max_diff)
 
-        return s_out
+        # return s_out
 
 
 class MaskDimensionShuffler(nn.Module):
