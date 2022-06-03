@@ -8,7 +8,7 @@ provisioner:
   instance_type: "ml.g4dn.xlarge" # cheap gpu for testing
   #instance_type: ml.c5.xlarge
   dependencies: ["block_movement_pruning", "mlops"]
-  entry_point: /Users/au478108/Projects/block_movement_pruning/entrypoints/squad_bert_ft_entry_point.py #
+  entry_point: block_movement_pruning/entrypoints/squad_bert_ft_entry_point.py #
   framework_version: "1.9.1"
   py_version: py38
   use_spot_instances: False
