@@ -23,7 +23,6 @@ python block_movement_pruning/masked_run_squad.py \
     --learning_rate 3e-5 \
     --initial_threshold 1 \
     --final_threshold 1 \
-    --fp16 \
     # --mask_scores_learning_rate 1e-2 \
     # --initial_warmup 1 \
     # --final_warmup 2 \
