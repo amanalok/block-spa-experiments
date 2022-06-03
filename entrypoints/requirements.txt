@@ -7,3 +7,4 @@ scipy>=1.4.1
 protobuf~=3.20
 tensorboard
 sklearn
+-r mlops/requirements.txt

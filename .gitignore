@@ -32,3 +32,6 @@ runs
 
 # Python cache files
 __pycache__/
+
+# PyCharm Idea Folder
+.idea/
