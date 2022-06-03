@@ -3,11 +3,11 @@
 RUN_DIR=runs/squad-bert-base-uncased-finetuned
 DATA_DIR=squad_data
 
-# mkdir -p $SQUAD_DATA
-# cd $SQUAD_DATA
-# wget -q https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json
-# wget -q https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json
-# cd ..
+mkdir -p $DATA_DIR
+cd $DATA_DIR
+wget -q https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json
+wget -q https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json
+cd ..
 
 python block_movement_pruning/masked_run_squad.py \
     --output_dir $RUN_DIR \
