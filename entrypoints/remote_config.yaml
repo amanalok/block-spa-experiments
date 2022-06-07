@@ -3,7 +3,7 @@ provisioner:
   type: sagemaker_pytorch
   job_name_base: "squad-bert-ft"
   inputs_paths: # multiple key-pairs allowed here, see entry_point file how to use them
-    train: "s3://applied-ml/block-movement-/training-data/"
+    train: "s3://applied-ml/block_movement_pruning/training-data/"
   # instance_type: "ml.p2.xlarge"
   instance_type: "ml.g4dn.xlarge" # cheap gpu for testing
   #instance_type: ml.c5.xlarge

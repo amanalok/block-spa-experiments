@@ -6,7 +6,7 @@ from mlops.common.config_loading import load_yaml_config
 # from mlops.ml_tracking.tracker_composition import TrackerComposition
 from mlops.provisioning.experiment_context import ExperimentContext
 from mlops.provisioning.ml_training_provisioner import RunModes
-from ..block_movement_pruning.masked_run_squad import main_single, create_parser
+from block_movement_pruning.masked_run_squad import main_single, create_parser
 
 run_logger = logging.getLogger(__name__)
 
