@@ -4,11 +4,11 @@ provisioner:
   job_name_base: "squad-bert-ft"
   inputs_paths: # multiple key-pairs allowed here, see entry_point file how to use them
     train: "s3://applied-ml/block_movement_pruning/training-data/"
-  # instance_type: "ml.p2.xlarge"
-  instance_type: "ml.g4dn.xlarge" # cheap gpu for testing
+  instance_type: "ml.p2.xlarge"
+  #instance_type: "ml.g4dn.xlarge" # cheap gpu for testing
   #instance_type: ml.c5.xlarge
-  dependencies: ["block_movement_pruning", "mlops"]
-  entry_point: entrypoints/squad_bert_ft_entry_point.py #
+  dependencies: ["block_movement_pruning", "emmental", "mlops"]
+  entry_point: block_movement_pruning/configs/squad_bert_ft_entry_point.py #
   # define framework version
   #  framework_version: "1.9.1"
   #  py_version: py38

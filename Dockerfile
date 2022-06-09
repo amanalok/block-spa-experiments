@@ -8,7 +8,7 @@ ENV DEBCONF_NONINTERACTIVE_SEEN true
 
 # Project setup
 
-COPY entrypoints/requirements.txt .
+COPY requirements.txt .
 COPY mlops/requirements.txt mlops/requirements.txt
 COPY mlops/requirements-non-tensorflow.txt mlops/requirements-non-tensorflow.txt
 
@@ -23,3 +23,5 @@ ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
 RUN pip install sagemaker-training
+RUN python -c 'import torch; print(torch.__version__)'
+RUN nvcc --version
