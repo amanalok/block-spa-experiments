@@ -29,7 +29,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from emmental import MaskedBertConfig, MaskedBertForQuestionAnswering
-from hp_naming import TrialShortNamer
+from block_movement_pruning.hp_naming import TrialShortNamer
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
@@ -52,6 +52,9 @@ from transformers.data.processors.squad import (
     SquadV1Processor,
     SquadV2Processor,
 )
+
+from mlops.ml_tracking.null_tracker import NullTracker
+from mlops.ml_tracking.tracker import Tracker
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -136,7 +139,7 @@ def to_list(tensor):
     return tensor.detach().cpu().tolist()
 
 
-def train(args, train_dataset, model, tokenizer, teacher=None):
+def train(args, train_dataset, model, tokenizer, teacher=None, tracker=NullTracker()):
     """Train the model"""
     if args.local_rank in [-1, 0]:
         tb_writer = SummaryWriter(log_dir=args.output_dir)
@@ -325,12 +328,13 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
     # Added here for reproducibility
     set_seed(args)
 
-    for _ in train_iterator:
+    for epoch in train_iterator:
         epoch_iterator = tqdm(
             train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0]
         )
         for step, batch in enumerate(epoch_iterator):
-
+            if steps_trained_in_current_epoch == 0:
+                tracker.track_scalar(name="epoch", scalar=epoch, step=global_step)
             # Skip past any already trained steps if resuming training
             if steps_trained_in_current_epoch > 0:
                 steps_trained_in_current_epoch -= 1
@@ -472,6 +476,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
                     and global_step % args.logging_steps == 0
                 ):
                     tb_writer.add_scalar("threshold", threshold, global_step)
+                    metrics_to_track = {"threshold": threshold}
                     for name, param in model.named_parameters():
                         try:
                             if not param.requires_grad:
@@ -488,6 +493,13 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
                             tb_writer.add_scalar(
                                 "parameter_max/" + name, param.data.max(), global_step
                             )
+                            metrics_to_track.update(
+                                {
+                                    "parameter_mean/" + name: param.data.mean(),
+                                    "parameter_std/" + name: param.data.std(),
+                                    "parameter_min/" + name: param.data.min(),
+                                    "parameter_max/" + name: param.data.max()}
+                            )
                             if "pooler" in name:
                                 continue
                             tb_writer.add_scalar(
@@ -496,6 +508,11 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
                             tb_writer.add_scalar(
                                 "grad_std/" + name, param.grad.data.std(), global_step
                             )
+                            metrics_to_track.update(
+                                {
+                                    "grad_mean/" + name: param.grad.data.mean(),
+                                    "grad_std/" + name: param.grad.data.std(),
+                                })
                             if (
                                 args.regularization is not None
                                 and "mask_scores" in name
@@ -511,9 +528,11 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
                                 tb_writer.add_scalar(
                                     "retained_weights_perc/" + name, perc, global_step
                                 )
+                                metrics_to_track.update({"retained_weights_perc/" + name, perc})
+
                         except AttributeError as e:
                             print(f"name error with {name}", e)
-
+                    tracker.track_scalars(data=metrics_to_track, step=global_step, mode=Tracker.MODE.TRAIN)
                 optimizer.step()
                 scheduler.step()  # Update learning rate schedule
                 model.zero_grad()
@@ -534,6 +553,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
                             )
                     learning_rate_scalar = scheduler.get_lr()
                     tb_writer.add_scalar("lr", learning_rate_scalar[0], global_step)
+                    tracker.track_scalar("lr", learning_rate_scalar[0], global_step)
                     if len(learning_rate_scalar) > 1:
                         for idx, lr in enumerate(learning_rate_scalar[1:]):
                             tb_writer.add_scalar(f"lr/{idx+1}", lr, global_step)
@@ -542,12 +562,21 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
                         (tr_loss - logging_loss) / args.logging_steps,
                         global_step,
                     )
+                    tracker.track_scalar("loss",
+                        (tr_loss - logging_loss) / args.logging_steps,
+                        global_step,)
                     if teacher is not None:
                         tb_writer.add_scalar(
                             "loss/distil", loss_logits.item(), global_step
                         )
+                        tracker.track_scalar(
+                            "loss/distil", loss_logits.item(), global_step
+                        )
                     if args.regularization is not None:
                         tb_writer.add_scalar(
+                            "loss/regularization", regu_.item(), global_step
+                        )
+                        tracker.track_scalar(
                             "loss/regularization", regu_.item(), global_step
                         )
                     if (teacher is not None) or (args.regularization is not None):
@@ -562,6 +591,14 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
                                 / args.alpha_ce,
                                 global_step,
                             )
+                            tracker.track_scalar("loss/instant_ce",
+                                (
+                                    loss.item()
+                                    - regu_lambda * regu_.item()
+                                    - args.alpha_distil * loss_logits.item()
+                                )
+                                / args.alpha_ce,
+                                global_step,)
                         elif teacher is not None:
                             tb_writer.add_scalar(
                                 "loss/instant_ce",
@@ -569,12 +606,19 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
                                 / args.alpha_ce,
                                 global_step,
                             )
+                            tracker.track_scalar("loss/instant_ce",
+                                (loss.item() - args.alpha_distil * loss_logits.item())
+                                / args.alpha_ce,
+                                global_step,)
                         else:
                             tb_writer.add_scalar(
                                 "loss/instant_ce",
                                 loss.item() - regu_lambda * regu_.item(),
                                 global_step,
                             )
+                            tracker.track_scalar("loss/instant_ce",
+                                loss.item() - regu_lambda * regu_.item(),
+                                global_step,)
                     logging_loss = tr_loss
 
                 # Save model checkpoint
@@ -613,6 +657,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None):
                             tb_writer.add_scalar(
                                 "eval/{}".format(key), value, global_step
                             )
+                            tracker.track_scalar("eval/{}".format(key), value, global_step)
 
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
@@ -1463,7 +1508,7 @@ class ShortNamer(TrialShortNamer):
     )
 
 
-def main_single(args):
+def main_single(args, tracker=NullTracker()):
     short_name = ShortNamer.shortname(args.__dict__)
     print(f"HP NAME {short_name}")
     args.output_dir = os.path.join(args.output_dir, short_name)
@@ -1503,6 +1548,7 @@ def main_single(args):
         ptvsd.wait_for_attach()
 
     # Setup CUDA, GPU & distributed training
+    print("args=%s" % args)
     if args.local_rank == -1 or args.no_cuda:
         device = torch.device(
             "cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu"
@@ -1513,6 +1559,7 @@ def main_single(args):
         device = torch.device("cuda", args.local_rank)
         torch.distributed.init_process_group(backend="nccl")
         args.n_gpu = 1
+    print("device=%s" % device)
     args.device = device
 
     # Setup logging
@@ -1587,7 +1634,7 @@ def main_single(args):
     if args.local_rank == 0:
         # Make sure only the first process in distributed training will download model & vocab
         torch.distributed.barrier()
-
+    os.system("nvidia-smi")
     model.to(args.device)
 
     logger.info("Training/evaluation parameters %s", args)
@@ -1611,7 +1658,7 @@ def main_single(args):
             args, tokenizer, evaluate=False, output_examples=False
         )
         global_step, tr_loss = train(
-            args, train_dataset, model, tokenizer, teacher=teacher
+            args, train_dataset, model, tokenizer, teacher=teacher, tracker=tracker
         )
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 

@@ -1,14 +1,25 @@
+region: &region
+  "us-east-1"
+#  "eu-west-1"
+#  "us-east-2"
+#  "eu-central-1"
+#  "ap-northeast-1"
+#  "ap-southeast-1"
 
 provisioner:
   type: sagemaker_pytorch
+  aws_region: *region
   job_name_base: "squad-bert-ft"
   inputs_paths: # multiple key-pairs allowed here, see entry_point file how to use them
     train: "s3://applied-ml/block_movement_pruning/training-data/"
-  instance_type: "ml.p2.xlarge"
-  #instance_type: "ml.g4dn.xlarge" # cheap gpu for testing
+  #instance_type: ml.p3.8xlarge  # 4xNVIDIA tesla V100, 64GB,  12$/h on demand
+  instance_type: ml.p3.2xlarge  #   NVIDIA tesla V100, 16GB,  3$/h on demand
+  # instance_type: ml.p2.xlarge   #   NVIDIA tesla k80,  12GB,  0.9$/h on demand
+  #instance_type: ml.g4dn.xlarge  #   NVIDIA T4 Tensor Core, 16GB 0.5$/h on demand
+  #instance_type: ml.g4dn.12xlarge # 4xNVIDIA T4 Tensor Core, 64GB, 3.8$/h on demand
   #instance_type: ml.c5.xlarge
   dependencies: ["block_movement_pruning", "emmental", "mlops"]
-  entry_point: block_movement_pruning/configs/squad_bert_ft_entry_point.py #
+  entry_point: ./squad_bert_ft_entry_point.py #
   # define framework version
   #  framework_version: "1.9.1"
   #  py_version: py38
@@ -26,11 +37,9 @@ provisioner:
 # out_dir: &out_dir
 #   /opt/ml/checkpoints/
 
-# trackers:
-#   - type: wandb
-#     run_id_dir: "/opt/ml/checkpoints/"
-#     project_name: test-mlops-examples
-#     team: applied-machine-learning
-#     is_sweep: False
-#     tags:
-#       1: baseline
+trackers:
+ - type: wandb
+   run_id_dir: "/opt/ml/checkpoints/"
+   project_name: block_movement_pruning
+   team: applied-machine-learning
+   is_sweep: False
