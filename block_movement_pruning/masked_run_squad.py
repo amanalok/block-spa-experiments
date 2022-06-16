@@ -29,7 +29,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from emmental import MaskedBertConfig, MaskedBertForQuestionAnswering
-from block_movement_pruning.hp_naming import TrialShortNamer
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
@@ -53,13 +52,51 @@ from transformers.data.processors.squad import (
     SquadV2Processor,
 )
 
-from mlops.ml_tracking.null_tracker import NullTracker
-from mlops.ml_tracking.tracker import Tracker
+try:
+    # Load env variables
+    import pip
+
+    def install(package):
+        if hasattr(pip, "main"):
+            pip.main(["install", package])
+        else:
+            pip._internal.main(["install", package])
+
+    install("python-dotenv")
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    # Load wandb
+    import wandb
+
+    wandb.login(key=os.getenv("WANDB_API_KEY", ""))
+except Exception as e:
+    print(e)
 
 try:
     from torch.utils.tensorboard import SummaryWriter
+    from torch.utils.tensorboard import SummaryWriter
 except ImportError:
     from tensorboardX import SummaryWriter
+
+
+class MetricLogger:
+    def __init__(self, name: str = "", log_dir: str = "", config: dict = None):
+        self.tb_logger = SummaryWriter(log_dir=log_dir)
+        wandb.init(project="block_movement_pruning", name=name, config=config)
+
+    def add_scalar(self, tag, metric, step):
+        self.tb_logger.add_scalar(tag, metric, global_step=step)
+        wandb.log({tag: metric}, step=step)
+
+    def add_scalars(self, metric_dict, step=None, main_tag=""):
+        self.tb_logger.add_scalars(main_tag, metric_dict, global_step=step)
+        if main_tag:
+            metric_dict = {f"{main_tag}/{k}": v for k, v in metric_dict.items()}
+        wandb.log(metric_dict, step=step)
+
+    def close(self):
+        self.tb_logger.close()
 
 
 logger = logging.getLogger(__name__)
@@ -139,11 +176,8 @@ def to_list(tensor):
     return tensor.detach().cpu().tolist()
 
 
-def train(args, train_dataset, model, tokenizer, teacher=None, tracker=NullTracker()):
+def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
     """Train the model"""
-    if args.local_rank in [-1, 0]:
-        tb_writer = SummaryWriter(log_dir=args.output_dir)
-
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
     train_sampler = (
         RandomSampler(train_dataset)
@@ -334,7 +368,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None, tracker=NullTrack
         )
         for step, batch in enumerate(epoch_iterator):
             if steps_trained_in_current_epoch == 0:
-                tracker.track_scalar(name="epoch", scalar=epoch, step=global_step)
+                mlogger.add_scalar("epoch", epoch, global_step)
             # Skip past any already trained steps if resuming training
             if steps_trained_in_current_epoch > 0:
                 steps_trained_in_current_epoch -= 1
@@ -475,44 +509,27 @@ def train(args, train_dataset, model, tokenizer, teacher=None, tracker=NullTrack
                     and args.logging_steps > 0
                     and global_step % args.logging_steps == 0
                 ):
-                    tb_writer.add_scalar("threshold", threshold, global_step)
                     metrics_to_track = {"threshold": threshold}
                     for name, param in model.named_parameters():
                         try:
                             if not param.requires_grad:
                                 continue
-                            tb_writer.add_scalar(
-                                "parameter_mean/" + name, param.data.mean(), global_step
-                            )
-                            tb_writer.add_scalar(
-                                "parameter_std/" + name, param.data.std(), global_step
-                            )
-                            tb_writer.add_scalar(
-                                "parameter_min/" + name, param.data.min(), global_step
-                            )
-                            tb_writer.add_scalar(
-                                "parameter_max/" + name, param.data.max(), global_step
-                            )
                             metrics_to_track.update(
                                 {
                                     "parameter_mean/" + name: param.data.mean(),
                                     "parameter_std/" + name: param.data.std(),
                                     "parameter_min/" + name: param.data.min(),
-                                    "parameter_max/" + name: param.data.max()}
+                                    "parameter_max/" + name: param.data.max(),
+                                }
                             )
                             if "pooler" in name:
                                 continue
-                            tb_writer.add_scalar(
-                                "grad_mean/" + name, param.grad.data.mean(), global_step
-                            )
-                            tb_writer.add_scalar(
-                                "grad_std/" + name, param.grad.data.std(), global_step
-                            )
                             metrics_to_track.update(
                                 {
                                     "grad_mean/" + name: param.grad.data.mean(),
                                     "grad_std/" + name: param.grad.data.std(),
-                                })
+                                }
+                            )
                             if (
                                 args.regularization is not None
                                 and "mask_scores" in name
@@ -525,14 +542,15 @@ def train(args, train_dataset, model, tokenizer, teacher=None, tracker=NullTrack
                                     perc = (
                                         torch.sigmoid(param - 2 / 3 * np.log(0.1 / 1.1))
                                     ).sum().item() / param.numel()
-                                tb_writer.add_scalar(
-                                    "retained_weights_perc/" + name, perc, global_step
+                                metrics_to_track.update(
+                                    {"retained_weights_perc/" + name, perc}
                                 )
-                                metrics_to_track.update({"retained_weights_perc/" + name, perc})
 
                         except AttributeError as e:
                             print(f"name error with {name}", e)
-                    tracker.track_scalars(data=metrics_to_track, step=global_step, mode=Tracker.MODE.TRAIN)
+                    mlogger.add_scalars(
+                        main_tag="train", metric_dict=metrics_to_track, step=global_step
+                    )
                 optimizer.step()
                 scheduler.step()  # Update learning rate schedule
                 model.zero_grad()
@@ -548,40 +566,30 @@ def train(args, train_dataset, model, tokenizer, teacher=None, tracker=NullTrack
                     if args.local_rank == -1 and args.evaluate_during_training:
                         results = evaluate(args, model, tokenizer)
                         for key, value in results.items():
-                            tb_writer.add_scalar(
+                            mlogger.add_scalar(
                                 "eval/{}".format(key), value, global_step
                             )
                     learning_rate_scalar = scheduler.get_lr()
-                    tb_writer.add_scalar("lr", learning_rate_scalar[0], global_step)
-                    tracker.track_scalar("lr", learning_rate_scalar[0], global_step)
+                    mlogger.add_scalar("lr", learning_rate_scalar[0], global_step)
                     if len(learning_rate_scalar) > 1:
                         for idx, lr in enumerate(learning_rate_scalar[1:]):
-                            tb_writer.add_scalar(f"lr/{idx+1}", lr, global_step)
-                    tb_writer.add_scalar(
+                            mlogger.add_scalar(f"lr/{idx+1}", lr, global_step)
+                    mlogger.add_scalar(
                         "loss",
                         (tr_loss - logging_loss) / args.logging_steps,
                         global_step,
                     )
-                    tracker.track_scalar("loss",
-                        (tr_loss - logging_loss) / args.logging_steps,
-                        global_step,)
                     if teacher is not None:
-                        tb_writer.add_scalar(
-                            "loss/distil", loss_logits.item(), global_step
-                        )
-                        tracker.track_scalar(
+                        mlogger.add_scalar(
                             "loss/distil", loss_logits.item(), global_step
                         )
                     if args.regularization is not None:
-                        tb_writer.add_scalar(
-                            "loss/regularization", regu_.item(), global_step
-                        )
-                        tracker.track_scalar(
+                        mlogger.add_scalar(
                             "loss/regularization", regu_.item(), global_step
                         )
                     if (teacher is not None) or (args.regularization is not None):
                         if (teacher is not None) and (args.regularization is not None):
-                            tb_writer.add_scalar(
+                            mlogger.add_scalar(
                                 "loss/instant_ce",
                                 (
                                     loss.item()
@@ -591,34 +599,19 @@ def train(args, train_dataset, model, tokenizer, teacher=None, tracker=NullTrack
                                 / args.alpha_ce,
                                 global_step,
                             )
-                            tracker.track_scalar("loss/instant_ce",
-                                (
-                                    loss.item()
-                                    - regu_lambda * regu_.item()
-                                    - args.alpha_distil * loss_logits.item()
-                                )
-                                / args.alpha_ce,
-                                global_step,)
                         elif teacher is not None:
-                            tb_writer.add_scalar(
+                            mlogger.add_scalar(
                                 "loss/instant_ce",
                                 (loss.item() - args.alpha_distil * loss_logits.item())
                                 / args.alpha_ce,
                                 global_step,
                             )
-                            tracker.track_scalar("loss/instant_ce",
-                                (loss.item() - args.alpha_distil * loss_logits.item())
-                                / args.alpha_ce,
-                                global_step,)
                         else:
-                            tb_writer.add_scalar(
+                            mlogger.add_scalar(
                                 "loss/instant_ce",
                                 loss.item() - regu_lambda * regu_.item(),
                                 global_step,
                             )
-                            tracker.track_scalar("loss/instant_ce",
-                                loss.item() - regu_lambda * regu_.item(),
-                                global_step,)
                     logging_loss = tr_loss
 
                 # Save model checkpoint
@@ -654,10 +647,9 @@ def train(args, train_dataset, model, tokenizer, teacher=None, tracker=NullTrack
                     if args.eval_all_checkpoints:
                         results = evaluate(args, model, tokenizer)
                         for key, value in results.items():
-                            tb_writer.add_scalar(
+                            mlogger.add_scalar(
                                 "eval/{}".format(key), value, global_step
                             )
-                            tracker.track_scalar("eval/{}".format(key), value, global_step)
 
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
@@ -667,7 +659,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None, tracker=NullTrack
             break
 
     if args.local_rank in [-1, 0]:
-        tb_writer.close()
+        mlogger.close()
 
     return global_step, tr_loss / global_step
 
@@ -1426,92 +1418,14 @@ def create_parser():
     return parser
 
 
-class ShortNamer(TrialShortNamer):
-    DEFAULTS = dict(
-        adam_epsilon=1e-08,
-        alpha_ce=0.5,
-        alpha_distil=0.5,
-        cache_dir="",
-        config_name="",
-        data_dir="squad_data",
-        do_eval=True,
-        do_lower_case=True,
-        do_train=True,
-        doc_stride=128,
-        eval_all_checkpoints=True,
-        evaluate_during_training=False,
-        final_lambda=0.0,
-        final_threshold=0.1,
-        final_warmup=2,
-        fp16=False,
-        fp16_opt_level="O1",
-        global_topk=False,
-        global_topk_frequency_compute=25,
-        gradient_accumulation_steps=1,
-        initial_threshold=1.0,
-        initial_warmup=1,
-        lang_id=0,
-        learning_rate=3e-05,
-        local_rank=-1,
-        logging_steps=1000,
-        mask_init="constant",
-        mask_scale=0.0,
-        mask_scores_learning_rate=0.01,
-        ampere_learning_rate=0.01,
-        shuffling_learning_rate=0.001,
-        mask_block_rows=1,
-        mask_block_cols=1,
-        max_answer_length=30,
-        max_grad_norm=1.0,
-        max_query_length=64,
-        max_seq_length=384,
-        max_steps=-1,
-        model_name_or_path="bert-base-uncased",
-        model_type="masked_bert",
-        n_best_size=20,
-        no_cuda=False,
-        null_score_diff_threshold=0.0,
-        num_train_epochs=10.0,
-        output_dir="block_movement_pruning/output",
-        overwrite_cache=False,
-        overwrite_output_dir=True,
-        per_gpu_eval_batch_size=16,
-        per_gpu_train_batch_size=16,
-        predict_file="dev-v1.1.json",
-        pruning_method="topK",
-        regularization=None,
-        save_steps=5000,
-        seed=42,
-        server_ip="",
-        server_port="",
-        teacher_name_or_path=None,
-        teacher_type=None,
-        temperature=2.0,
-        threads=8,
-        tokenizer_name="",
-        train_file="train-v1.1.json",
-        truncate_train_examples=-1,
-        verbose_logging=False,
-        version_2_with_negative=False,
-        warmup_steps=5400,
-        weight_decay=0.0,
-        ampere_mask_init="constant",
-        ampere_mask_scale=0.0,
-        ampere_pruning_method="disabled",
-        initial_ampere_temperature=0.0,
-        final_ampere_temperature=20,
-        shuffling_method="disabled",
-        in_shuffling_group=4,
-        out_shuffling_group=4,
-        initial_shuffling_temperature=0.1,
-        final_shuffling_temperature=20,
-    )
-
-
-def main_single(args, tracker=NullTracker()):
-    short_name = ShortNamer.shortname(args.__dict__)
+def main_single(args):
+    short_name = f"{args.model_type}_{args.data_dir}_method-{args.pruning_method}_threshold-{args.final_threshold}_lambda-{args.final_lambda}_teacher-{args.teacher_type or 'None'}"
     print(f"HP NAME {short_name}")
+
     args.output_dir = os.path.join(args.output_dir, short_name)
+
+    if args.local_rank in [-1, 0]:
+        mlogger = MetricLogger(log_dir=args.output_dir, name=short_name, config=args)
 
     if args.doc_stride >= args.max_seq_length - args.max_query_length:
         logger.warning(
@@ -1658,7 +1572,7 @@ def main_single(args, tracker=NullTracker()):
             args, tokenizer, evaluate=False, output_examples=False
         )
         global_step, tr_loss = train(
-            args, train_dataset, model, tokenizer, teacher=teacher, tracker=tracker
+            args, train_dataset, model, tokenizer, teacher=teacher, mlogger=mlogger
         )
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
@@ -1710,6 +1624,7 @@ def main_single(args, tracker=NullTracker()):
             results.update(result)
 
     logger.info("Results: {}".format(results))
+    mlogger.add_scalars(main_tag="eval", metric_dics=results)
     predict_file = list(filter(None, args.predict_file.split("/"))).pop()
     if not os.path.exists(os.path.join(args.output_dir, predict_file)):
         os.makedirs(os.path.join(args.output_dir, predict_file))
@@ -1730,17 +1645,16 @@ def main():
         args.regularization = None
 
     # sizes = [(2, 1), (8, 1), (32, 1), (128, 1), (4, 4), (8, 8), (32, 32), (1, 2), (1, 8), (1, 32), (1, 128)][::]
-    sizes = [(32, 32), (16, 16), (64, 64)]
+    # sizes = [(32, 32), (16, 16), (64, 64)]
+    # for size in sizes[:1]:
+    single_args = copy.deepcopy(args)
+    single_args.mask_block_rows = 32
+    single_args.mask_block_cols = 32
 
-    for size in sizes[:1]:
-        single_args = copy.deepcopy(args)
-        single_args.mask_block_rows = size[0]
-        single_args.mask_block_cols = size[1]
-
-        # try:
-        main_single(single_args)
-        # except Exception as e:
-        #    print(e)
+    # try:
+    main_single(single_args)
+    # except Exception as e:
+    #    print(e)
 
 
 if __name__ == "__main__":
