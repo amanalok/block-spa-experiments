@@ -75,7 +75,6 @@ except Exception as e:
 
 try:
     from torch.utils.tensorboard import SummaryWriter
-    from torch.utils.tensorboard import SummaryWriter
 except ImportError:
     from tensorboardX import SummaryWriter
 
@@ -1624,7 +1623,7 @@ def main_single(args):
             results.update(result)
 
     logger.info("Results: {}".format(results))
-    mlogger.add_scalars(main_tag="eval", metric_dics=results)
+    mlogger.add_scalars(main_tag="eval", metric_dict=results)
     predict_file = list(filter(None, args.predict_file.split("/"))).pop()
     if not os.path.exists(os.path.join(args.output_dir, predict_file)):
         os.makedirs(os.path.join(args.output_dir, predict_file))
