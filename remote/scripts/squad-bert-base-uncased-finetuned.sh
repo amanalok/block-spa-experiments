@@ -3,13 +3,13 @@
 RUN_DIR=runs/squad-bert-base-uncased-finetuned
 DATA_DIR=squad_data
 
-mkdir -p $DATA_DIR
-cd $DATA_DIR
-wget -q https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json
-wget -q https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json
-cd ..
+# mkdir -p $SQUAD_DATA
+# cd $SQUAD_DATA
+# wget -q https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json
+# wget -q https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json
+# cd ..
 
-python block_movement_pruning/masked_run_squad.py \
+python remote/scripts/run.py \
     --output_dir $RUN_DIR \
     --data_dir $DATA_DIR \
     --train_file train-v1.1.json \
@@ -23,6 +23,7 @@ python block_movement_pruning/masked_run_squad.py \
     --learning_rate 3e-5 \
     --initial_threshold 1 \
     --final_threshold 1 \
+    --overwrite_output_dir \
     # --mask_scores_learning_rate 1e-2 \
     # --initial_warmup 1 \
     # --final_warmup 2 \
