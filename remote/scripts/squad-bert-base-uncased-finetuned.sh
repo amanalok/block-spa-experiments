@@ -9,7 +9,7 @@ DATA_DIR=squad_data
 # wget -q https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json
 # cd ..
 
-python run.py \
+python remote/scripts/run.py \
     --output_dir $RUN_DIR \
     --data_dir $DATA_DIR \
     --train_file train-v1.1.json \
@@ -23,6 +23,7 @@ python run.py \
     --learning_rate 3e-5 \
     --initial_threshold 1 \
     --final_threshold 1 \
+    --overwrite_output_dir \
     # --mask_scores_learning_rate 1e-2 \
     # --initial_warmup 1 \
     # --final_warmup 2 \

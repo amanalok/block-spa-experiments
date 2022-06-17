@@ -28,10 +28,14 @@
 # Runs
 runs
 /runs/
-/seriealized_data/
+/serialized_data/
+/wandb/
 
 # Python cache files
 __pycache__/
 
 # PyCharm Idea Folder
 .idea/
+
+# Secrets
+.env

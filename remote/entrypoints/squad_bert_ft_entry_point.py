@@ -47,6 +47,4 @@ if __name__ == "__main__":
 
     os.system("nvidia-smi")
     exp_context = ExperimentContext.create()
-    run(
-        context=exp_context,
-    )
+    run(context=exp_context)
