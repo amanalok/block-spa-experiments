@@ -542,7 +542,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
                                         torch.sigmoid(param - 2 / 3 * np.log(0.1 / 1.1))
                                     ).sum().item() / param.numel()
                                 metrics_to_track.update(
-                                    {"retained_weights_perc/" + name, perc}
+                                    {f"retained_weights_perc/{name}": perc}
                                 )
 
                         except AttributeError as e:
