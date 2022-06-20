@@ -18,7 +18,7 @@ provisioner:
   #instance_type: ml.g4dn.xlarge  #   NVIDIA T4 Tensor Core, 16GB 0.5$/h on demand
   #instance_type: ml.g4dn.12xlarge # 4xNVIDIA T4 Tensor Core, 64GB, 3.8$/h on demand
   #instance_type: ml.c5.xlarge
-  dependencies: ["block_movement_pruning", "emmental", "mlops"]
+  dependencies: ["block_movement_pruning", "emmental", "mlops", "bert-base-uncased"]
   entry_point: ./remote/entrypoints/squad_bert_ft_entry_point.py #
   # define framework version
   #  framework_version: "1.9.1"
