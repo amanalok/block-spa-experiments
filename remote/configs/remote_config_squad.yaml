@@ -30,7 +30,7 @@ provisioner:
   # Tags for cost tracking and more
   allow_dirty_git: True
   tags:
-    expcode: "mlops-test" # TODO: change this. Get code from Ravish
+    expcode: "ml-research-structured-pruning-adapters"
     purpose: "development"
     entity: "mlops"
 
