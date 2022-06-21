@@ -32,6 +32,7 @@ from emmental import MaskedBertConfig, MaskedBertForQuestionAnswering
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
+from .counts_parameters import counts_parameters
 
 from transformers import (
     AdamW,
@@ -664,6 +665,15 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
 
 
 def evaluate(args, model, tokenizer, prefix=""):
+    logger.info("***** Counting parameters *****")
+    remaining_count, encoder_count = counts_parameters(
+        model.state_dict(),
+        args.pruning_method,
+        args.final_threshold,
+        args.mask_block_rows,
+        args.mask_block_cols,
+    )
+
     dataset, examples, features = load_and_cache_examples(
         args, tokenizer, evaluate=True, output_examples=True
     )
@@ -845,6 +855,11 @@ def evaluate(args, model, tokenizer, prefix=""):
 
     # Compute the F1 and exact scores.
     results = squad_evaluate(examples, predictions)
+
+    results["parameters_full_encoder_count"] = encoder_count
+    results["parameters_remaining_count"] = remaining_count
+    results["parameters_remaining"] = remaining_count / encoder_count
+
     return results
 
 
@@ -1412,6 +1427,12 @@ def create_parser():
         type=int,
         default=-1,
         help="Only keep first train examples, for development purpose for example.",
+    )
+    parser.add_argument(
+        "--identifier",
+        type=str,
+        default="",
+        help="Additional custom identifier.",
     )
 
     return parser

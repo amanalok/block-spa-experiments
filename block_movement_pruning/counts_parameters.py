@@ -30,27 +30,34 @@ def expand_mask(mask, args):
     return mask
 
 
-def main(args):
-    serialization_dir = args.serialization_dir
-    pruning_method = args.pruning_method
+def counts_parameters(
+    state_dict,
+    pruning_method,
+    threshold,
+    ampere_pruning_method,
+    mask_block_rows,
+    mask_block_cols,
+):
     threshold = args.threshold
     ampere_pruning_method = args.ampere_pruning_method
-
-    st = torch.load(
-        os.path.join(serialization_dir, "pytorch_model.bin"), map_location="cuda"
-    )
 
     remaining_count = 0  # Number of remaining (not pruned) params in the encoder
     encoder_count = 0  # Number of params in the encoder
 
     print("name".ljust(60, " "), "Remaining Weights %", "Remaining Weight")
-    for name, param in st.items():
+    for name, param in state_dict.items():
         if "encoder" not in name:
             continue
 
         if name.endswith(".weight"):
             weights = MaskedLinear.masked_weights_from_state_dict(
-                st, name, pruning_method, threshold, ampere_pruning_method
+                state_dict,
+                name,
+                pruning_method,
+                threshold,
+                ampere_pruning_method,
+                mask_block_rows,
+                mask_block_cols,
             )
             mask_ones = (weights != 0).sum().item()
             print(
@@ -74,6 +81,7 @@ def main(args):
 
     print("")
     print("Remaining Weights (global) %: ", 100 * remaining_count / encoder_count)
+    return remaining_count, encoder_count
 
 
 if __name__ == "__main__":
@@ -115,4 +123,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    main(args)
+    st = torch.load(
+        os.path.join(args.serialization_dir, "pytorch_model.bin"), map_location="cuda"
+    )
+    counts_parameters(
+        st,
+        args.pruning_method,
+        args.threshold,
+        args.ampere_pruning_method,
+        args.mask_block_rows,
+        args.mask_block_cols,
+    )
