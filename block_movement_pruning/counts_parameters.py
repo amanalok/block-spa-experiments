@@ -34,13 +34,10 @@ def counts_parameters(
     state_dict,
     pruning_method,
     threshold,
-    ampere_pruning_method,
-    mask_block_rows,
-    mask_block_cols,
+    mask_block_rows=32,
+    mask_block_cols=32,
+    ampere_pruning_method="disabled",
 ):
-    threshold = args.threshold
-    ampere_pruning_method = args.ampere_pruning_method
-
     remaining_count = 0  # Number of remaining (not pruned) params in the encoder
     encoder_count = 0  # Number of params in the encoder
 
@@ -50,7 +47,8 @@ def counts_parameters(
             continue
 
         if name.endswith(".weight"):
-            weights = MaskedLinear.masked_weights_from_state_dict(
+            encoder_count += param.numel()
+            masked_weights = MaskedLinear.masked_weights_from_state_dict(
                 state_dict,
                 name,
                 pruning_method,
@@ -59,7 +57,7 @@ def counts_parameters(
                 mask_block_rows,
                 mask_block_cols,
             )
-            mask_ones = (weights != 0).sum().item()
+            mask_ones = (masked_weights != 0).sum().item()
             print(
                 name.ljust(60, " "),
                 str(round(100 * mask_ones / param.numel(), 3)).ljust(20, " "),
@@ -91,7 +89,7 @@ if __name__ == "__main__":
         "--pruning_method",
         choices=["l0", "topK", "sigmoied_threshold"],
         type=str,
-        required=True,
+        default="sigmoied_threshold",
         help="Pruning Method (l0 = L0 regularization, topK = Movement pruning, sigmoied_threshold = Soft movement pruning)",
     )
     parser.add_argument(
@@ -105,7 +103,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--serialization_dir",
         type=str,
-        required=True,
+        default="bert-base-uncased",
         help="Folder containing the model that was previously fine-pruned",
     )
     parser.add_argument(
@@ -124,13 +122,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     st = torch.load(
-        os.path.join(args.serialization_dir, "pytorch_model.bin"), map_location="cuda"
+        os.path.join(args.serialization_dir, "pytorch_model.bin"),
+        map_location="cuda" if torch.cuda.is_available() else "cpu",
     )
     counts_parameters(
         st,
         args.pruning_method,
         args.threshold,
-        args.ampere_pruning_method,
         args.mask_block_rows,
         args.mask_block_cols,
     )
