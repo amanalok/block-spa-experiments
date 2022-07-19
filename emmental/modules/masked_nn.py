@@ -501,7 +501,13 @@ class MaskedLinear(nn.Linear):
                 out_features_group=self.out_shuffling_group,
             )
 
-        if self.pruning_method in ["topK", "threshold", "sigmoied_threshold", "l0"]:
+        if self.pruning_method in [
+            "magnitude",
+            "topK",
+            "threshold",
+            "sigmoied_threshold",
+            "l0",
+        ]:
             self.mask_scale = mask_scale
             self.mask_init = mask_init
             size = self.weight.size()
@@ -603,7 +609,7 @@ class MaskedLinear(nn.Linear):
             sig = "sigmoied" in pruning_method
             mask = ThresholdBinarizer.apply(mask_scores, threshold, sig)
         elif pruning_method == "magnitude":
-            mask = MagnitudeBinarizer.apply(weight, threshold)
+            mask = MagnitudeBinarizer.apply(mask_scores, weight, threshold)
         elif pruning_method == "l0":
             l, r, b = -0.1, 1.1, 2 / 3
             if training:
@@ -614,10 +620,10 @@ class MaskedLinear(nn.Linear):
             s_bar = s * (r - l) + l
             mask = s_bar.clamp(min=0.0, max=1.0)
         # Expand block mask to individual element mask
-        if pruning_method != "magnitude":
-            mask = MaskedLinear.expand_mask_(
-                mask, mask_block_rows=mask_block_rows, mask_block_cols=mask_block_cols
-            )
+        # if pruning_method != "magnitude":
+        mask = MaskedLinear.expand_mask_(
+            mask, mask_block_rows=mask_block_rows, mask_block_cols=mask_block_cols
+        )
 
         if ampere_pruning_method != "disabled":
             ampere_mask = MaskedLinear.ampere_mask_(
@@ -643,21 +649,24 @@ class MaskedLinear(nn.Linear):
         def name_for_mask(weight_name, mask_name):
             new_name = weight_name.split(".")[:-1] + [mask_name]
             new_name = ".".join(new_name)
+            return new_name
 
         parameters = {}
         for name in ["weight", "mask_scores", "ampere_permut_scores"]:
             parameters[name] = state_dict.get(name_for_mask(weight_name, name))
 
-        ret = MaskedLinear.masked_weights(
-            pruning_method=pruning_method,
-            threshold=threshold,
-            ampere_pruning_method=ampere_pruning_method,
-            ampere_temperature=0.0,
-            training=False,
-            mask_block_rows=mask_block_rows,
-            mask_block_cols=mask_block_cols,
-            **parameters,
-        )
+        ret = parameters["weight"]
+        if parameters["mask_scores"] is not None:
+            ret *= MaskedLinear.mask_(
+                pruning_method=pruning_method,
+                threshold=threshold,
+                ampere_pruning_method=ampere_pruning_method,
+                ampere_temperature=0.0,
+                mask_block_rows=mask_block_rows,
+                mask_block_cols=mask_block_cols,
+                training=False,
+                **parameters,
+            )
 
         return ret
 

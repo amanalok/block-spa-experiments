@@ -118,7 +118,7 @@ class MagnitudeBinarizer(object):
     """
 
     @staticmethod
-    def apply(inputs: torch.tensor, threshold: float):
+    def apply(mask_scores: torch.tensor, inputs: torch.tensor, threshold: float):
         """
         Args:
             inputs (`torch.FloatTensor`)
@@ -133,9 +133,13 @@ class MagnitudeBinarizer(object):
                 retained, 0 - the associated weight is pruned).
         """
         # Get the subnetwork by sorting the inputs and using the top threshold %
-        mask = inputs.clone()
-        _, idx = inputs.abs().flatten().sort(descending=True)
-        j = int(threshold * inputs.numel())
+        mask = mask_scores.clone()
+        a, b = inputs.shape
+        c, d = mask_scores.shape
+        square_ins = inputs.reshape(c, a // c, d, b // d).abs().mean(dim=(1, 3))
+        _, idx = square_ins.flatten().sort(descending=True)
+        # _, idx = inputs.abs().flatten().sort(descending=True)
+        j = int(threshold * square_ins.numel())
 
         # flat_out and mask access the same memory.
         flat_out = mask.flatten()

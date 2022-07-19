@@ -32,7 +32,7 @@ from emmental import MaskedBertConfig, MaskedBertForQuestionAnswering
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
-from .counts_parameters import counts_parameters
+from counts_parameters import counts_parameters
 
 from transformers import (
     AdamW,
@@ -71,6 +71,7 @@ try:
     import wandb
 
     wandb.login(key=os.getenv("WANDB_API_KEY", ""))
+
 except Exception as e:
     print(e)
 
@@ -672,6 +673,7 @@ def evaluate(args, model, tokenizer, prefix=""):
         args.final_threshold,
         args.mask_block_rows,
         args.mask_block_cols,
+        args.ampere_pruning_method,
     )
 
     dataset, examples, features = load_and_cache_examples(
@@ -1668,8 +1670,8 @@ def main():
     # sizes = [(32, 32), (16, 16), (64, 64)]
     # for size in sizes[:1]:
     single_args = copy.deepcopy(args)
-    single_args.mask_block_rows = 32
-    single_args.mask_block_cols = 32
+    # single_args.mask_block_rows = 32
+    # single_args.mask_block_cols = 32
 
     # try:
     main_single(single_args)
