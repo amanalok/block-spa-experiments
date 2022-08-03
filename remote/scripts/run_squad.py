@@ -4,7 +4,9 @@ from argparse import ArgumentParser
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument("--config_file", default="remote/configs/remote_config.yaml")
+    parser.add_argument(
+        "--config_file", default="remote/configs/remote_config_squad.yaml"
+    )
     args, uk = parser.parse_known_args()
     provisioner = MLTrainingProvisioner.from_config(args.config_file)
     if len(uk) != 0:
