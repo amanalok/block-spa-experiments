@@ -30,6 +30,7 @@ runs
 /runs/
 /seriealized_data/
 /wandb/
+/remote/scripts/logs
 
 # Python cache files
 __pycache__/
