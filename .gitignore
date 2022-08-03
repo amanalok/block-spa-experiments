@@ -28,7 +28,7 @@
 # Runs
 runs
 /runs/
-/serialized_data/
+/seriealized_data/
 /wandb/
 
 # Python cache files
