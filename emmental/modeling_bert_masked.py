@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Masked Version of BERT. It replaces the `torch.nn.Linear` layers with
-:class:`~emmental.MaskedLinear` and add an additional parameters in the forward pass to
+:class:`~emmental.MaskedSPLoPALinear` and add an additional parameters in the forward pass to
 compute the adaptive mask.
 Built on top of `transformers.modeling_bert`"""
 
@@ -24,7 +24,7 @@ import math
 
 import torch
 from emmental import MaskedBertConfig
-from emmental.modules import MaskedLinear
+from emmental.modules import MaskedSPLoPALinear
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 
@@ -60,7 +60,7 @@ def add_start_docstrings_to_model_forward(*docstr):
 
 
 def create_masked_linear(in_features, out_features, config, bias=True):
-    ret = MaskedLinear(
+    ret = MaskedSPLoPALinear(
         in_features=in_features,
         out_features=out_features,
         pruning_method=config.pruning_method,
@@ -74,6 +74,7 @@ def create_masked_linear(in_features, out_features, config, bias=True):
         shuffling_method=config.shuffling_method,
         in_shuffling_group=config.in_shuffling_group,
         out_shuffling_group=config.out_shuffling_group,
+        num_prototypes=config.num_splopa_prototypes,
     )
     return ret
 
@@ -575,7 +576,7 @@ class MaskedBertModel(MaskedBertPreTrainedModel):
     ):
         r"""
         current_config dict
-            current_config dict (see :class:`emmental.MaskedLinear`).
+            current_config dict (see :class:`emmental.MaskedSPLoPALinear`).
 
         Return:
             :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~emmental.MaskedBertConfig`) and inputs:
@@ -776,7 +777,7 @@ class MaskedBertForSequenceClassification(MaskedBertPreTrainedModel):
                 If :obj:`config.num_labels == 1` a regression loss is computed (Mean-Square loss),
                 If :obj:`config.num_labels > 1` a classification loss is computed (Cross-Entropy).
             current_config dict
-                current_config dict (see :class:`emmental.MaskedLinear`).
+                current_config dict (see :class:`emmental.MaskedSPLoPALinear`).
 
         Returns:
             :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~emmental.MaskedBertConfig`) and inputs:
@@ -862,7 +863,7 @@ class MaskedBertForMultipleChoice(MaskedBertPreTrainedModel):
                 Indices should be in ``[0, ..., num_choices]`` where `num_choices` is the size of the second dimension
                 of the input tensors. (see `input_ids` above)
             current_config dict
-                current_config dict (see :class:`emmental.MaskedLinear`).
+                current_config dict (see :class:`emmental.MaskedSPLoPALinear`).
 
         Returns:
             :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~emmental.MaskedBertConfig`) and inputs:
@@ -965,7 +966,7 @@ class MaskedBertForTokenClassification(MaskedBertPreTrainedModel):
                 Labels for computing the token classification loss.
                 Indices should be in ``[0, ..., config.num_labels - 1]``.
             current_config dict
-                current_config dict (see :class:`emmental.MaskedLinear`).
+                current_config dict (see :class:`emmental.MaskedSPLoPALinear`).
 
         Returns:
             :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~emmental.MaskedBertConfig`) and inputs:
@@ -1061,7 +1062,7 @@ class MaskedBertForQuestionAnswering(MaskedBertPreTrainedModel):
                 Positions are clamped to the length of the sequence (`sequence_length`).
                 Position outside of the sequence are not taken into account for computing the loss.
             current_config dict
-                current_config dict (see :class:`emmental.MaskedLinear`).
+                current_config dict (see :class:`emmental.MaskedSPLoPALinear`).
 
         Returns:
             :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~emmental.MaskedBertConfig`) and inputs:

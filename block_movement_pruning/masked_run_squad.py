@@ -1437,11 +1437,19 @@ def create_parser():
         help="Additional custom identifier.",
     )
 
+    # Adapter parameters
+    parser.add_argument(
+        "--num_splopa_prototypes",
+        type=int,
+        default=64,
+        help="Number of propotypes employed in the Structured Pruning Low-rank PHM Adapter.",
+    )
+
     return parser
 
 
 def main_single(args):
-    short_name = f"{args.model_type}_{args.data_dir}_method-{args.pruning_method}_threshold-{args.final_threshold}_lambda-{args.final_lambda}_teacher-{args.teacher_type or 'None'}"
+    short_name = f"splopa_{args.model_type}_{args.data_dir}_method-{args.pruning_method}_threshold-{args.final_threshold}_lambda-{args.final_lambda}_teacher-{args.teacher_type or 'None'}"
     print(f"HP NAME {short_name}")
 
     args.output_dir = os.path.join(args.output_dir, short_name)

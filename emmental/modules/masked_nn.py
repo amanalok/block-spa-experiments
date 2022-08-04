@@ -30,6 +30,7 @@ from torch.nn import functional as F
 from torch.nn import init
 
 from .binarizer import MagnitudeBinarizer, ThresholdBinarizer, TopKBinarizer
+from sp_adapters import SPLoPALinear
 
 sparse_patterns = None
 
@@ -702,3 +703,308 @@ class MaskedLinear(nn.Linear):
             weight_thresholded = mask * self.weight
             # Compute output (linear layer) with masked weights
             return F.linear(input, weight_thresholded, self.bias)
+
+
+class MaskedSPLoPALinear(SPLoPALinear):
+    """
+    Fully Connected layer with on the fly adaptive mask and a Structured Pruning Low-rank PHM Adapter.
+    If needed, a score matrix is created to store the importance of each associated weight.
+    """
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        mask_init: str = "constant",
+        mask_scale: float = 0.0,
+        pruning_method: str = "topK",
+        mask_block_rows: int = 1,
+        mask_block_cols: int = 1,
+        ampere_pruning_method: str = "disabled",
+        ampere_mask_init: str = "constant",
+        ampere_mask_scale: float = 0.0,
+        shuffling_method: str = "disabled",
+        in_shuffling_group: int = 4,
+        out_shuffling_group: int = 4,
+        num_prototypes: int = 64,
+    ):
+        """
+        Args:
+            in_features (`int`)
+                Size of each input sample
+            out_features (`int`)
+                Size of each output sample
+            bias (`bool`)
+                If set to ``False``, the layer will not learn an additive bias.
+                Default: ``True``
+            mask_init (`str`)
+                The initialization method for the score matrix if a score matrix is needed.
+                Choices: ["constant", "uniform", "kaiming"]
+                Default: ``constant``
+            mask_scale (`float`)
+                The initialization parameter for the chosen initialization method `mask_init`.
+                Default: ``0.``
+            pruning_method (`str`)
+                Method to compute the mask.
+                Choices: ["topK", "threshold", "sigmoied_threshold", "magnitude", "l0"]
+                Default: ``topK``
+        """
+        SPLoPALinear.__init__(
+            self,
+            in_features=in_features,
+            out_features=out_features,
+            bias=bias,
+            num_prototypes=num_prototypes,
+            block_shape=(mask_block_rows, mask_block_cols),
+        )
+        assert pruning_method in [
+            "topK",
+            "threshold",
+            "sigmoied_threshold",
+            "magnitude",
+            "l0",
+        ]
+        self.pruning_method = pruning_method
+        self.mask_block_rows = mask_block_rows
+        self.mask_block_cols = mask_block_cols
+        AMPERE_METHODS = ["disabled", "annealing"]
+        if ampere_pruning_method not in AMPERE_METHODS:
+            raise RuntimeError(
+                f"Unknown ampere pruning method '{ampere_pruning_method}', should be in {AMPERE_METHODS}"
+            )
+        self.ampere_pruning_method = ampere_pruning_method
+
+        SHUFFLING_METHODS = ["disabled", "annealing", "mask_annealing"]
+        if shuffling_method not in SHUFFLING_METHODS:
+            raise RuntimeError(
+                f"Unknown shuffle method '{shuffling_method}', should be in {SHUFFLING_METHODS}"
+            )
+
+        self.shuffling_method = shuffling_method
+        assert in_shuffling_group >= 1
+        self.in_shuffling_group = in_shuffling_group
+        assert out_shuffling_group >= 1
+        self.out_shuffling_group = out_shuffling_group
+
+        self.shuffler = None
+        self.mask_shuffler = None
+
+        if self.shuffling_method == "annealing":
+            self.shuffler = DimensionShuffler(
+                in_features=in_features,
+                out_features=out_features,
+                in_features_group=self.in_shuffling_group,
+                out_features_group=self.out_shuffling_group,
+            )
+        elif self.shuffling_method == "mask_annealing":
+            self.mask_shuffler = MaskDimensionShuffler(
+                in_features=in_features,
+                out_features=out_features,
+                in_features_group=self.in_shuffling_group,
+                out_features_group=self.out_shuffling_group,
+            )
+
+        if self.pruning_method in [
+            "magnitude",
+            "topK",
+            "threshold",
+            "sigmoied_threshold",
+            "l0",
+        ]:
+            self.mask_scale = mask_scale
+            self.mask_init = mask_init
+            size = self.weight.size()
+            assert size[0] % self.mask_block_rows == 0
+            assert size[1] % self.mask_block_cols == 0
+            mask_size = (
+                size[0] // self.mask_block_rows,
+                size[1] // self.mask_block_cols,
+            )
+            self.mask_scores = nn.Parameter(torch.Tensor(size=mask_size))
+            self.init_mask()
+
+        if self.ampere_pruning_method == "annealing":
+            self.ampere_mask_init = ampere_mask_init
+            self.ampere_mask_scale = ampere_mask_scale
+            self.initialize_ampere_permut_scores()
+        else:
+            self.register_parameter("ampere_permut_scores", None)
+
+    def initialize_ampere_permut_scores(self):
+        """ "We must remember that weights are used in transposed form for forward pass,
+        which we want to optimize the most.
+        So we make sure we are creating an Ampere sparse pattern on the right dimension -> 0"""
+        assert (self.weight.shape[0] % AMPERE_M) == 0
+
+        sparse_patterns_count = ampere_pattern(None).shape[0]
+        # Creating the pattern in a transposed way to avoid a few ops later
+        ampere_mask_size = (
+            self.weight.shape[1],
+            self.weight.shape[0] // AMPERE_M,
+            sparse_patterns_count,
+        )
+        self.ampere_permut_scores = nn.Parameter(torch.Tensor(size=ampere_mask_size))
+
+        if self.ampere_mask_init == "constant":
+            init.constant_(self.ampere_permut_scores, val=self.ampere_mask_scale)
+        elif self.ampere_mask_init == "uniform":
+            init.uniform_(
+                self.ampere_permut_scores,
+                a=-self.ampere_mask_scale,
+                b=self.ampere_mask_scale,
+            )
+        elif self.ampere_mask_init == "kaiming":
+            init.kaiming_uniform_(self.ampere_permut_scores, a=math.sqrt(5))
+
+    def init_mask(self):
+        if self.mask_init == "constant":
+            init.constant_(self.mask_scores, val=self.mask_scale)
+        elif self.mask_init == "uniform":
+            init.uniform_(self.mask_scores, a=-self.mask_scale, b=self.mask_scale)
+        elif self.mask_init == "kaiming":
+            init.kaiming_uniform_(self.mask_scores, a=math.sqrt(5))
+
+    @staticmethod
+    def expand_mask_(mask, mask_block_rows, mask_block_cols):
+        mask = torch.repeat_interleave(mask, mask_block_rows, dim=0)
+        mask = torch.repeat_interleave(mask, mask_block_cols, dim=1)
+        return mask
+
+    @staticmethod
+    def ampere_mask_(
+        ampere_permut_scores,
+        ampere_temperature: float,
+        device: torch.DeviceObjType,
+        training: bool,
+    ):
+        if training:
+            s = F.softmax(ampere_permut_scores * ampere_temperature, dim=-1)
+        else:
+            s = torch.argmax(ampere_permut_scores, dim=-1)
+            s = F.one_hot(s, num_classes=ampere_permut_scores.shape[-1]).float()
+
+        s = s.matmul(ampere_pattern(device))
+        s = s.view(-1, s.shape[1] * s.shape[2])
+        s = s.t()
+
+        return s
+
+    @staticmethod
+    def check_name(name):
+        return name.endswith(".ampere_permut_scores") or name.endswith(".mask_scores")
+
+    @staticmethod
+    def mask_(
+        weight,
+        pruning_method,
+        threshold,
+        mask_scores,
+        ampere_pruning_method,
+        ampere_temperature,
+        ampere_permut_scores,
+        mask_block_rows,
+        mask_block_cols,
+        training,
+    ):
+        if pruning_method == "topK":
+            mask = TopKBinarizer.apply(mask_scores, threshold)
+        elif pruning_method in ["threshold", "sigmoied_threshold"]:
+            sig = "sigmoied" in pruning_method
+            mask = ThresholdBinarizer.apply(mask_scores, threshold, sig)
+        elif pruning_method == "magnitude":
+            mask = MagnitudeBinarizer.apply(mask_scores, weight, threshold)
+        elif pruning_method == "l0":
+            l, r, b = -0.1, 1.1, 2 / 3
+            if training:
+                u = torch.zeros_like(mask_scores).uniform_().clamp(0.0001, 0.9999)
+                s = torch.sigmoid((u.log() - (1 - u).log() + mask_scores) / b)
+            else:
+                s = torch.sigmoid(mask_scores)
+            s_bar = s * (r - l) + l
+            mask = s_bar.clamp(min=0.0, max=1.0)
+        # Expand block mask to individual element mask
+        # if pruning_method != "magnitude":
+        mask = MaskedLinear.expand_mask_(
+            mask, mask_block_rows=mask_block_rows, mask_block_cols=mask_block_cols
+        )
+
+        if ampere_pruning_method != "disabled":
+            ampere_mask = MaskedLinear.ampere_mask_(
+                ampere_permut_scores,
+                ampere_temperature,
+                device=mask.device,
+                training=training,
+            )
+            mask = mask * ampere_mask
+
+        return mask
+
+    @staticmethod
+    def masked_weights_from_state_dict(
+        state_dict,
+        weight_name,
+        pruning_method,
+        threshold,
+        ampere_pruning_method,
+        mask_block_rows,
+        mask_block_cols,
+    ):
+        def name_for_mask(weight_name, mask_name):
+            new_name = weight_name.split(".")[:-1] + [mask_name]
+            new_name = ".".join(new_name)
+            return new_name
+
+        parameters = {}
+        for name in ["adapted_weight", "mask_scores", "ampere_permut_scores"]:
+            parameters[name] = state_dict.get(name_for_mask(weight_name, name))
+
+        ret = parameters["adapted_weight"]
+        if parameters["mask_scores"] is not None:
+            ret *= MaskedSPLoPALinear.mask_(
+                weight=ret,
+                pruning_method=pruning_method,
+                threshold=threshold,
+                ampere_pruning_method=ampere_pruning_method,
+                ampere_temperature=0.0,
+                mask_block_rows=mask_block_rows,
+                mask_block_cols=mask_block_cols,
+                training=False,
+                **parameters,
+            )
+
+        return ret
+
+    def expand_mask(self, mask):
+        return self.expand_mask_(mask, self.mask_block_rows, self.mask_block_cols)
+
+    def forward(self, input: torch.tensor, current_config: dict):
+        # Get the mask
+        threshold = current_config["threshold"]
+        ampere_temperature = current_config["ampere_temperature"]
+        shuffle_temperature = current_config["shuffling_temperature"]
+
+        mask = self.mask_(
+            self.adapted_weight,
+            self.pruning_method,
+            threshold,
+            self.mask_scores,
+            self.ampere_pruning_method,
+            ampere_temperature,
+            self.ampere_permut_scores,
+            self.mask_block_rows,
+            self.mask_block_cols,
+            training=self.training,
+        )
+
+        if self.shuffler is not None:
+            return (
+                self.shuffler(input, self.adapted_weight, mask, shuffle_temperature)
+                + self.adapted_bias
+            )
+        else:
+            if self.mask_shuffler is not None:
+                mask = self.mask_shuffler(mask, shuffle_temperature)
+            weight_thresholded = mask * self.adapted_weight
+            # Compute output (linear layer) with masked weights
+            return F.linear(input, weight_thresholded, self.adapted_bias)

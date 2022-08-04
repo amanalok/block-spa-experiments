@@ -19,7 +19,7 @@ import argparse
 import os
 
 import torch
-from emmental.modules import MaskedLinear
+from emmental.modules import MaskedSPLoPALinear
 
 
 def expand_mask(mask, args):
@@ -48,7 +48,7 @@ def counts_parameters(
 
         if name.endswith(".weight"):
             encoder_count += param.numel()
-            masked_weights = MaskedLinear.masked_weights_from_state_dict(
+            masked_weights = MaskedSPLoPALinear.masked_weights_from_state_dict(
                 state_dict,
                 name,
                 pruning_method,
@@ -65,7 +65,7 @@ def counts_parameters(
             )
 
             remaining_count += mask_ones
-        elif MaskedLinear.check_name(name):
+        elif MaskedSPLoPALinear.check_name(name):
             pass
         else:
             encoder_count += param.numel()

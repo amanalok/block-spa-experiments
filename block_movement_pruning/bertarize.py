@@ -22,7 +22,7 @@ import os
 import shutil
 
 import torch
-from emmental.modules import MaskedLinear
+from emmental.modules import MaskedSPLoPALinear
 
 
 def expand_mask(mask, args):
@@ -57,11 +57,11 @@ def main(args):
             print(f"Copied layer {name}")
         else:
             if name.endswith(".weight"):
-                pruned_model[name] = MaskedLinear.masked_weights_from_state_dict(
+                pruned_model[name] = MaskedSPLoPALinear.masked_weights_from_state_dict(
                     model, name, pruning_method, threshold, ampere_pruning_method
                 )
             else:
-                assert MaskedLinear.check_name(name)
+                assert MaskedSPLoPALinear.check_name(name)
 
     if target_model_path is None:
         target_model_path = os.path.join(
