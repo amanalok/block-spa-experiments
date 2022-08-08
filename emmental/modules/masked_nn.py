@@ -892,7 +892,15 @@ class MaskedSPLoPALinear(SPLoPALinear):
 
     @staticmethod
     def check_name(name):
-        return name.endswith(".ampere_permut_scores") or name.endswith(".mask_scores")
+        return (
+            name.endswith(".ampere_permut_scores")
+            or name.endswith(".mask_scores")
+            # Counting weights is handled by looking up .weight
+            or name.endswith(".adapter.prototypes.cols")
+            or name.endswith(".adapter.prototypes.rows")
+            or name.endswith(".adapter.pos_weights.rows")
+            or name.endswith(".adapter_bias")
+        )
 
     @staticmethod
     def mask_(
@@ -956,24 +964,42 @@ class MaskedSPLoPALinear(SPLoPALinear):
             return new_name
 
         parameters = {}
-        for name in ["adapted_weight", "mask_scores", "ampere_permut_scores"]:
+        for name in [
+            "weight",
+            "adapter.pos_weights",
+            "adapter.prototypes.cols",
+            "adapter.prototypes.rows",
+            "mask_scores",
+            "ampere_permut_scores",
+        ]:
             parameters[name] = state_dict.get(name_for_mask(weight_name, name))
 
-        ret = parameters["adapted_weight"]
+        masked_weight = parameters["weight"]
+        adapter_masked_pos_weight = parameters["adapter.pos_weights"]
         if parameters["mask_scores"] is not None:
-            ret *= MaskedSPLoPALinear.mask_(
-                weight=ret,
+            mask = MaskedSPLoPALinear.mask_(
+                weight=masked_weight,
                 pruning_method=pruning_method,
                 threshold=threshold,
                 ampere_pruning_method=ampere_pruning_method,
                 ampere_temperature=0.0,
-                mask_block_rows=mask_block_rows,
-                mask_block_cols=mask_block_cols,
+                mask_block_rows=1,
+                mask_block_cols=1,
                 training=False,
-                **parameters,
+                mask_scores=parameters["mask_scores"],
+                ampere_permut_scores=parameters["ampere_permut_scores"],
             )
+            masked_weight *= MaskedLinear.expand_mask_(
+                mask, mask_block_rows=mask_block_rows, mask_block_cols=mask_block_cols
+            )
+            adapter_masked_pos_weight *= mask.unsqueeze(0)
 
-        return ret
+        return (
+            masked_weight,
+            adapter_masked_pos_weight,
+            parameters["adapter.prototypes.cols"],
+            parameters["adapter.prototypes.rows"],
+        )
 
     def expand_mask(self, mask):
         return self.expand_mask_(mask, self.mask_block_rows, self.mask_block_cols)

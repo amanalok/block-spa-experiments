@@ -32,7 +32,7 @@ from emmental import MaskedBertConfig, MaskedBertForQuestionAnswering
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
-from counts_parameters import counts_parameters
+from count_parameters import count_parameters
 
 from transformers import (
     AdamW,
@@ -511,44 +511,44 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
                     and global_step % args.logging_steps == 0
                 ):
                     metrics_to_track = {"threshold": threshold}
-                    for name, param in model.named_parameters():
-                        try:
-                            if not param.requires_grad:
-                                continue
-                            metrics_to_track.update(
-                                {
-                                    "parameter_mean/" + name: param.data.mean(),
-                                    "parameter_std/" + name: param.data.std(),
-                                    "parameter_min/" + name: param.data.min(),
-                                    "parameter_max/" + name: param.data.max(),
-                                }
-                            )
-                            if "pooler" in name:
-                                continue
-                            metrics_to_track.update(
-                                {
-                                    "grad_mean/" + name: param.grad.data.mean(),
-                                    "grad_std/" + name: param.grad.data.std(),
-                                }
-                            )
-                            if (
-                                args.regularization is not None
-                                and "mask_scores" in name
-                            ):
-                                if args.regularization == "l1":
-                                    perc = (
-                                        torch.sigmoid(param) > threshold
-                                    ).sum().item() / param.numel()
-                                elif args.regularization == "l0":
-                                    perc = (
-                                        torch.sigmoid(param - 2 / 3 * np.log(0.1 / 1.1))
-                                    ).sum().item() / param.numel()
-                                metrics_to_track.update(
-                                    {f"retained_weights_perc/{name}": perc}
-                                )
+                    # for name, param in model.named_parameters():
+                    #     try:
+                    #         if not param.requires_grad:
+                    #             continue
+                    #         metrics_to_track.update(
+                    #             {
+                    #                 "parameter_mean/" + name: param.data.mean(),
+                    #                 "parameter_std/" + name: param.data.std(),
+                    #                 "parameter_min/" + name: param.data.min(),
+                    #                 "parameter_max/" + name: param.data.max(),
+                    #             }
+                    #         )
+                    #         if "pooler" in name:
+                    #             continue
+                    #         metrics_to_track.update(
+                    #             {
+                    #                 "grad_mean/" + name: param.grad.data.mean(),
+                    #                 "grad_std/" + name: param.grad.data.std(),
+                    #             }
+                    #         )
+                    #         if (
+                    #             args.regularization is not None
+                    #             and "mask_scores" in name
+                    #         ):
+                    #             if args.regularization == "l1":
+                    #                 perc = (
+                    #                     torch.sigmoid(param) > threshold
+                    #                 ).sum().item() / param.numel()
+                    #             elif args.regularization == "l0":
+                    #                 perc = (
+                    #                     torch.sigmoid(param - 2 / 3 * np.log(0.1 / 1.1))
+                    #                 ).sum().item() / param.numel()
+                    #             metrics_to_track.update(
+                    #                 {f"retained_weights_perc/{name}": perc}
+                    #             )
 
-                        except AttributeError as e:
-                            print(f"name error with {name}", e)
+                    #     except AttributeError as e:
+                    #         print(f"name error with {name}", e)
                     mlogger.add_scalars(
                         main_tag="train", metric_dict=metrics_to_track, step=global_step
                     )
@@ -667,7 +667,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
 
 def evaluate(args, model, tokenizer, prefix=""):
     logger.info("***** Counting parameters *****")
-    remaining_count, encoder_count = counts_parameters(
+    remaining_count, encoder_count, learned_count = count_parameters(
         model.state_dict(),
         args.pruning_method,
         args.final_threshold,
@@ -861,6 +861,8 @@ def evaluate(args, model, tokenizer, prefix=""):
     results["parameters_full_encoder_count"] = encoder_count
     results["parameters_remaining_count"] = remaining_count
     results["parameters_remaining"] = remaining_count / encoder_count
+    results["parameters_learned_count"] = learned_count
+    results["parameters_learned"] = learned_count / encoder_count
 
     return results
 
@@ -1557,6 +1559,16 @@ def main_single(args):
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
         cache_dir=args.cache_dir if args.cache_dir else None,
+    )
+
+    logger.info("***** Counting parameters *****")
+    count_parameters(
+        model.state_dict(),
+        args.pruning_method,
+        args.final_threshold,
+        args.mask_block_rows,
+        args.mask_block_cols,
+        args.ampere_pruning_method,
     )
 
     if args.teacher_type is not None:
