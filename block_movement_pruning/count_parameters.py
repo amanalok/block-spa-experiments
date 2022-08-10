@@ -39,9 +39,7 @@ def count_parameters(
     ampere_pruning_method="disabled",
 ):
     learned_count = 0  # Number of learned params in the encoder
-    remaining_count = (
-        0  # Number of remaining after pruning and adaptation in the encoder
-    )
+    remaining_count = 0  # Num remaining after pruning and adaptation in the encoder
     encoder_count = 0  # Number of params in the encoder
     prototype_shapes_seen = []
 
