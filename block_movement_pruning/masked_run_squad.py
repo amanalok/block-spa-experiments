@@ -211,6 +211,15 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
             "params": [
                 p
                 for n, p in model.named_parameters()
+                if "adapter.pos_weights" in n and p.requires_grad
+            ],
+            "lr": args.adapter_learning_rate,
+            "weight_decay": args.weight_decay,
+        },
+        {
+            "params": [
+                p
+                for n, p in model.named_parameters()
                 if "mask_score" in n and p.requires_grad
             ],
             "lr": args.mask_scores_learning_rate,
@@ -238,6 +247,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
                 if "mask_score" not in n
                 and "ampere_permut_scores" not in n
                 and "permutation_scores" not in n
+                and "adapter.pos_weights" not in n
                 and p.requires_grad
                 and not any(nd in n for nd in no_decay)
             ],
@@ -251,6 +261,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
                 if "mask_score" not in n
                 and "ampere_permut_scores" not in n
                 and "permutation_scores" not in n
+                and "adapter.pos_weights" not in n
                 and p.requires_grad
                 and any(nd in n for nd in no_decay)
             ],
@@ -1445,6 +1456,12 @@ def create_parser():
         type=int,
         default=64,
         help="Number of propotypes employed in the Structured Pruning Low-rank PHM Adapter.",
+    )
+    parser.add_argument(
+        "--adapter_learning_rate",
+        type=float,
+        default=1e-3,
+        help="Learning rate for parameters in the Structured Pruning Low-rank PHM Adapter.",
     )
 
     return parser
