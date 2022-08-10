@@ -728,6 +728,7 @@ class MaskedSPLoPALinear(SPLoPALinear):
         in_shuffling_group: int = 4,
         out_shuffling_group: int = 4,
         num_prototypes: int = 64,
+        prototype_rank: int = 1,
     ):
         """
         Args:
@@ -757,6 +758,7 @@ class MaskedSPLoPALinear(SPLoPALinear):
             bias=bias,
             num_prototypes=num_prototypes,
             block_shape=(mask_block_rows, mask_block_cols),
+            prototype_rank=prototype_rank,
         )
         assert pruning_method in [
             "topK",

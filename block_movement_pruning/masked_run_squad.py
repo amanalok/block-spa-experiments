@@ -1458,6 +1458,12 @@ def create_parser():
         help="Number of propotypes employed in the Structured Pruning Low-rank PHM Adapter.",
     )
     parser.add_argument(
+        "--splopa_prototype_rank",
+        type=int,
+        default=1,
+        help="Rank of prototypes in the Structured Pruning Low-rank PHM Adapter.",
+    )
+    parser.add_argument(
         "--adapter_learning_rate",
         type=float,
         default=1e-3,
