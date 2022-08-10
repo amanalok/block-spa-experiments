@@ -900,7 +900,7 @@ class MaskedSPLoPALinear(SPLoPALinear):
             # Counting weights is handled by looking up .weight
             or name.endswith(".adapter.prototypes.cols")
             or name.endswith(".adapter.prototypes.rows")
-            or name.endswith(".adapter.pos_weights.rows")
+            or name.endswith(".adapter.pos_weights")
             or name.endswith(".adapter_bias")
         )
 
