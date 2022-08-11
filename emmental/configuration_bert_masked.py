@@ -59,6 +59,7 @@ class MaskedBertConfig(PretrainedConfig):
         out_shuffling_group: int = 4,
         num_splopa_prototypes: int = 64,
         splopa_prototype_rank: int = 1,
+        shared_splopa_prototypes: bool = True,
         **kwargs,
     ):
         super().__init__(pad_token_id=pad_token_id, **kwargs)
@@ -88,3 +89,4 @@ class MaskedBertConfig(PretrainedConfig):
         self.out_shuffling_group = out_shuffling_group
         self.num_splopa_prototypes = num_splopa_prototypes
         self.splopa_prototype_rank = splopa_prototype_rank
+        self.shared_splopa_prototypes = shared_splopa_prototypes

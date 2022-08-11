@@ -1464,6 +1464,11 @@ def create_parser():
         help="Rank of prototypes in the Structured Pruning Low-rank PHM Adapter.",
     )
     parser.add_argument(
+        "--splopa_prototypes_not_shared",
+        action="store_true",
+        help="Whether to share prototypes among layers.",
+    )
+    parser.add_argument(
         "--adapter_learning_rate",
         type=float,
         default=1e-3,
@@ -1570,6 +1575,9 @@ def main_single(args):
         shuffling_method=args.shuffling_method,
         in_shuffling_group=args.in_shuffling_group,
         out_shuffling_group=args.out_shuffling_group,
+        num_splopa_prototypes=args.num_splopa_prototypes,
+        splopa_prototype_rank=args.splopa_prototype_rank,
+        shared_splopa_prototypes=not args.splopa_prototypes_not_shared,
     )
 
     tokenizer = tokenizer_class.from_pretrained(

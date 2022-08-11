@@ -76,6 +76,7 @@ def create_masked_linear(in_features, out_features, config, bias=True):
         out_shuffling_group=config.out_shuffling_group,
         num_prototypes=config.num_splopa_prototypes,
         prototype_rank=config.splopa_prototype_rank,
+        shared_prototypes=config.shared_splopa_prototypes,
     )
     return ret
 
