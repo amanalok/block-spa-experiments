@@ -30,17 +30,29 @@ if __name__ == "__main__":
         }:
             continue
 
-        for adapter_lr, rank, protos in [
-            (0.1, 1, 64),
-            (0.01, 2, 64),
-            (0.01, 1, 256),
+        for adapter_lr, rank, protos, shared, block_size in [
+            (3e-4, 2, 64, True, 32),
+            (1e-4, 1, 64, True, 32),
+            (3e-5, 1, 64, True, 32),
+            # (0.005, 1, 64, True, 16),
+            # (0.005, 1, 64, False, 32),
+            # (0.005, 2, 64, True, 32),
+            # (0.005, 1, 256, True, 32),
+            # (0.005, 2, 256, True, 32),
+            # (0.005, 2, 256),
+            # (0.05, 1, 64),
+            # (0.005, 1, 64),
+            # (0.01, 2, 64),
+            # (0.01, 1, 256),
         ]:
+            id = f"splora_adapterlr={adapter_lr}_rank={rank}_protos={protos}_init=1e-4_shared={shared}_blocksize={block_size}_{identifier}"
+            print(f">> Running {id}")
             command = [
                 "python",
-                "block_movement_pruning/masked_run_squad.py",
-                # "remote/scripts/run_squad.py",
+                # "block_movement_pruning/masked_run_squad.py",
+                "remote/scripts/run_squad.py",
                 "--identifier",
-                f"splora_adapterlr={adapter_lr}_rank={rank}_protos={protos}_{identifier}"
+                id,
                 "--overwrite_output_dir",
                 "--output_dir",
                 "runs/squad-bert-base-uncased-finetuned",
@@ -58,9 +70,9 @@ if __name__ == "__main__":
                 "--model_name_or_path",
                 "bert-base-uncased",
                 "--mask_block_rows",
-                "32",
+                str(block_size),
                 "--mask_block_cols",
-                "32",
+                str(block_size),
                 "--adapter_learning_rate",
                 str(adapter_lr),
                 "--splopa_prototype_rank",
@@ -75,8 +87,10 @@ if __name__ == "__main__":
                     ]
                 ),
             ]
+            if not shared:
+                command.append("--splopa_prototypes_not_shared")
 
-            fpath = logs_dir / f"{identifier}.txt"
+            fpath = logs_dir / f"{id}.txt"
             if fpath.exists():
                 os.remove(fpath)
 
