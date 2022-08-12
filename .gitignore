@@ -26,11 +26,11 @@
 .vscode/
 
 # Runs
-runs
 /runs/
 /seriealized_data/
 /wandb/
 /remote/scripts/logs
+/sp_adapters/
 
 # Python cache files
 __pycache__/
