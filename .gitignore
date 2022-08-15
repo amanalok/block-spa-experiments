@@ -15,6 +15,7 @@
 
 # Dataset files
 /squad_data/
+/glue_data/
 
 # Models 
 *.bin
