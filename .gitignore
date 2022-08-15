@@ -15,6 +15,7 @@
 
 # Dataset files
 /squad_data/
+/glue_data/
 
 # Models 
 *.bin
@@ -26,11 +27,11 @@
 .vscode/
 
 # Runs
-runs
 /runs/
 /serialized_data/
 /wandb/
 /remote/scripts/logs
+/sp_adapters/
 
 # Python cache files
 __pycache__/
