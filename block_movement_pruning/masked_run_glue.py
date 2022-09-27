@@ -30,7 +30,7 @@ from emmental import MaskedBertConfig, MaskedBertForSequenceClassification
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
-from counts_parameters import counts_parameters  # NB: change bacl
+from .counts_parameters import counts_parameters  # NB: change back
 
 from transformers import (
     WEIGHTS_NAME,
@@ -64,8 +64,7 @@ try:
     # Load wandb
     import wandb
 
-    # wandb.login(key=os.getenv("WANDB_API_KEY", ""))
-    wandb.login(key="255d1a2a5c0c77eae098a4a104c3da92f63bd940")
+    wandb.login(key=os.getenv("WANDB_API_KEY", ""))
 
 except Exception as e:
     print(e)
@@ -820,7 +819,7 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
     return dataset
 
 
-def main():
+def create_parser():
     parser = argparse.ArgumentParser()
 
     # Required parameters
@@ -1195,8 +1194,13 @@ def main():
         default="",
         help="Additional custom identifier.",
     )
+    return parser
 
-    args = parser.parse_args()
+
+def main(args=None):
+
+    if args is None:
+        args = create_parser().parse_args()
 
     Path(args.data_dir).mkdir(exist_ok=True, parents=True)
 
