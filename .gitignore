@@ -29,9 +29,11 @@
 # Runs
 /runs/
 /seriealized_data/
+/serialized_data/
 /wandb/
 /remote/scripts/logs
 /sp_adapters/
+.env
 
 # Python cache files
 __pycache__/
@@ -40,4 +42,3 @@ __pycache__/
 .idea/
 
 # Secrets
-.env
