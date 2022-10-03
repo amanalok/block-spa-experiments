@@ -1469,6 +1469,17 @@ def create_parser():
         help="Whether to share prototypes among layers.",
     )
     parser.add_argument(
+        "--splopa_pos_weights_shared",
+        action="store_true",
+        help="Whether to share position weights among layers.",
+    )
+    parser.add_argument(
+        "--splopa_init_range",
+        type=float,
+        default=1e-4,
+        help="Range of initialisation for SPLoPA adapte .",
+    )
+    parser.add_argument(
         "--adapter_learning_rate",
         type=float,
         default=1e-3,
@@ -1578,6 +1589,8 @@ def main_single(args):
         num_splopa_prototypes=args.num_splopa_prototypes,
         splopa_prototype_rank=args.splopa_prototype_rank,
         shared_splopa_prototypes=not args.splopa_prototypes_not_shared,
+        shared_splopa_pos_weights=args.splopa_pos_weights_shared,
+        splopa_init_range=args.splopa_init_range,
     )
 
     tokenizer = tokenizer_class.from_pretrained(

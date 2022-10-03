@@ -730,6 +730,8 @@ class MaskedSPLoPALinear(SPLoPALinear):
         num_prototypes: int = 64,
         prototype_rank: int = 1,
         shared_prototypes: bool = False,
+        shared_pos_weights: bool = False,
+        adapter_init_range: float = 1e-4,
     ):
         """
         Args:
@@ -761,6 +763,8 @@ class MaskedSPLoPALinear(SPLoPALinear):
             block_shape=(mask_block_rows, mask_block_cols),
             prototype_rank=prototype_rank,
             shared_prototypes=shared_prototypes,
+            shared_pos_weights=shared_pos_weights,
+            init_range=adapter_init_range,
         )
         assert pruning_method in [
             "topK",

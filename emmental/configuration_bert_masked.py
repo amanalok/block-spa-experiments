@@ -60,6 +60,8 @@ class MaskedBertConfig(PretrainedConfig):
         num_splopa_prototypes: int = 64,
         splopa_prototype_rank: int = 1,
         shared_splopa_prototypes: bool = True,
+        shared_splopa_pos_weights: bool = False,
+        splopa_init_range: float = 1e-4,
         **kwargs,
     ):
         super().__init__(pad_token_id=pad_token_id, **kwargs)
@@ -90,3 +92,5 @@ class MaskedBertConfig(PretrainedConfig):
         self.num_splopa_prototypes = num_splopa_prototypes
         self.splopa_prototype_rank = splopa_prototype_rank
         self.shared_splopa_prototypes = shared_splopa_prototypes
+        self.shared_splopa_pos_weights = shared_splopa_pos_weights
+        self.splopa_init_range = splopa_init_range
