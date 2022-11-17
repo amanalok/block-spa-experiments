@@ -19,7 +19,7 @@ import argparse
 import os
 
 import torch
-from emmental.modules import MaskedLinear
+from emmental.modules import MaskedSPLoPALinear
 
 
 def expand_mask(mask, args):
@@ -30,7 +30,7 @@ def expand_mask(mask, args):
     return mask
 
 
-def counts_parameters(
+def count_parameters(
     state_dict,
     pruning_method,
     threshold,
@@ -38,17 +38,29 @@ def counts_parameters(
     mask_block_cols=32,
     ampere_pruning_method="disabled",
 ):
-    remaining_count = 0  # Number of remaining (not pruned) params in the encoder
+    learned_count = 0  # Number of learned params in the encoder
+    remaining_count = 0  # Num remaining after pruning and adaptation in the encoder
     encoder_count = 0  # Number of params in the encoder
+    prototype_shapes_seen = []
 
-    print("name".ljust(60, " "), "Remaining Weights %", "Remaining Weight")
+    print(
+        "name".ljust(60, " "),
+        "Remaining Weights %".ljust(20, " "),
+        "Remaining Weights".ljust(20, " "),
+        "Learned Weights %".ljust(20, " "),
+        "Learned Weights".ljust(20, " "),
+    )
     for name, param in state_dict.items():
         if "encoder" not in name:
             continue
 
         if name.endswith(".weight"):
-            encoder_count += param.numel()
-            masked_weights = MaskedLinear.masked_weights_from_state_dict(
+            (
+                masked_weights,
+                adapter_masked_pos_weights,
+                adapter_proto_cols,
+                adapter_proto_rows,
+            ) = MaskedSPLoPALinear.masked_weights_from_state_dict(
                 state_dict,
                 name,
                 pruning_method,
@@ -57,15 +69,37 @@ def counts_parameters(
                 mask_block_rows,
                 mask_block_cols,
             )
-            mask_ones = (masked_weights != 0).sum().item()
+            # Update total encoder weights
+            encoder_count += param.numel()
+
+            # Update encoder weights remaining after pruning and adaptation
+            mask_weight_ones = (masked_weights != 0).sum().item()
+            remaining_count += mask_weight_ones
+
+            # Update number of learned params
+            if adapter_proto_cols is not None:
+                prototype_shape = (
+                    adapter_proto_cols.shape[1],
+                    adapter_proto_rows.shape[2],
+                )
+                if (
+                    prototype_shape not in prototype_shapes_seen
+                ):  # NB: Protypes are shared
+                    prototype_shapes_seen.append(prototype_shapes_seen)
+                    learned_count += adapter_proto_cols.numel()
+                    learned_count += adapter_proto_rows.numel()
+
+                mask_pos_ones = (adapter_masked_pos_weights != 0).sum().item()
+                learned_count += mask_pos_ones
+
             print(
                 name.ljust(60, " "),
-                str(round(100 * mask_ones / param.numel(), 3)).ljust(20, " "),
-                str(mask_ones),
+                str(round(100 * mask_weight_ones / param.numel(), 3)).ljust(20, " "),
+                str(mask_weight_ones).ljust(20, " "),
+                str(round(100 * mask_pos_ones / param.numel(), 3)).ljust(20, " "),
+                str(mask_pos_ones).ljust(20, " "),
             )
-
-            remaining_count += mask_ones
-        elif MaskedLinear.check_name(name):
+        elif MaskedSPLoPALinear.check_name(name):
             pass
         else:
             encoder_count += param.numel()
@@ -78,8 +112,14 @@ def counts_parameters(
                 remaining_count += param.numel()
 
     print("")
-    print("Remaining Weights (global) %: ", 100 * remaining_count / encoder_count)
-    return remaining_count, encoder_count
+    print(f"Encoder Weights (global)  : {encoder_count}")
+    print(
+        f"Remaining Weights (global): {remaining_count} ({100 * remaining_count / encoder_count:.3f} %)"
+    )
+    print(
+        f"Learned Weights (global)  : {learned_count} ({100 * learned_count / encoder_count:.3f} %)"
+    )
+    return remaining_count, encoder_count, learned_count
 
 
 if __name__ == "__main__":
@@ -125,7 +165,7 @@ if __name__ == "__main__":
         os.path.join(args.serialization_dir, "pytorch_model.bin"),
         map_location="cuda" if torch.cuda.is_available() else "cpu",
     )
-    counts_parameters(
+    count_parameters(
         st,
         args.pruning_method,
         args.threshold,

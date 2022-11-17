@@ -1,5 +1,6 @@
 # coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
+# Copyright 2022-present, Lukas Hedegaard.
+# Copyright 2018 The Google AI Language Team Authors  The HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +33,7 @@ from emmental import MaskedBertConfig, MaskedBertForQuestionAnswering
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
-from counts_parameters import counts_parameters
+from count_parameters import count_parameters
 
 from transformers import (
     AdamW,
@@ -211,6 +212,15 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
             "params": [
                 p
                 for n, p in model.named_parameters()
+                if "adapter.pos_weights" in n and p.requires_grad
+            ],
+            "lr": args.adapter_learning_rate,
+            "weight_decay": args.weight_decay,
+        },
+        {
+            "params": [
+                p
+                for n, p in model.named_parameters()
                 if "mask_score" in n and p.requires_grad
             ],
             "lr": args.mask_scores_learning_rate,
@@ -238,6 +248,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
                 if "mask_score" not in n
                 and "ampere_permut_scores" not in n
                 and "permutation_scores" not in n
+                and "adapter.pos_weights" not in n
                 and p.requires_grad
                 and not any(nd in n for nd in no_decay)
             ],
@@ -251,6 +262,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
                 if "mask_score" not in n
                 and "ampere_permut_scores" not in n
                 and "permutation_scores" not in n
+                and "adapter.pos_weights" not in n
                 and p.requires_grad
                 and any(nd in n for nd in no_decay)
             ],
@@ -511,44 +523,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
                     and global_step % args.logging_steps == 0
                 ):
                     metrics_to_track = {"threshold": threshold}
-                    for name, param in model.named_parameters():
-                        try:
-                            if not param.requires_grad:
-                                continue
-                            metrics_to_track.update(
-                                {
-                                    "parameter_mean/" + name: param.data.mean(),
-                                    "parameter_std/" + name: param.data.std(),
-                                    "parameter_min/" + name: param.data.min(),
-                                    "parameter_max/" + name: param.data.max(),
-                                }
-                            )
-                            if "pooler" in name:
-                                continue
-                            metrics_to_track.update(
-                                {
-                                    "grad_mean/" + name: param.grad.data.mean(),
-                                    "grad_std/" + name: param.grad.data.std(),
-                                }
-                            )
-                            if (
-                                args.regularization is not None
-                                and "mask_scores" in name
-                            ):
-                                if args.regularization == "l1":
-                                    perc = (
-                                        torch.sigmoid(param) > threshold
-                                    ).sum().item() / param.numel()
-                                elif args.regularization == "l0":
-                                    perc = (
-                                        torch.sigmoid(param - 2 / 3 * np.log(0.1 / 1.1))
-                                    ).sum().item() / param.numel()
-                                metrics_to_track.update(
-                                    {f"retained_weights_perc/{name}": perc}
-                                )
-
-                        except AttributeError as e:
-                            print(f"name error with {name}", e)
+                    
                     mlogger.add_scalars(
                         main_tag="train", metric_dict=metrics_to_track, step=global_step
                     )
@@ -667,7 +642,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
 
 def evaluate(args, model, tokenizer, prefix=""):
     logger.info("***** Counting parameters *****")
-    remaining_count, encoder_count = counts_parameters(
+    remaining_count, encoder_count, learned_count = count_parameters(
         model.state_dict(),
         args.pruning_method,
         args.final_threshold,
@@ -861,6 +836,8 @@ def evaluate(args, model, tokenizer, prefix=""):
     results["parameters_full_encoder_count"] = encoder_count
     results["parameters_remaining_count"] = remaining_count
     results["parameters_remaining"] = remaining_count / encoder_count
+    results["parameters_learned_count"] = learned_count
+    results["parameters_learned"] = learned_count / encoder_count
 
     return results
 
@@ -1437,11 +1414,47 @@ def create_parser():
         help="Additional custom identifier.",
     )
 
+    # Adapter parameters
+    parser.add_argument(
+        "--num_splopa_prototypes",
+        type=int,
+        default=64,
+        help="Number of propotypes employed in the Structured Pruning Low-rank PHM Adapter.",
+    )
+    parser.add_argument(
+        "--splopa_prototype_rank",
+        type=int,
+        default=1,
+        help="Rank of prototypes in the Structured Pruning Low-rank PHM Adapter.",
+    )
+    parser.add_argument(
+        "--splopa_prototypes_not_shared",
+        action="store_true",
+        help="Whether to share prototypes among layers.",
+    )
+    parser.add_argument(
+        "--splopa_pos_weights_shared",
+        action="store_true",
+        help="Whether to share position weights among layers.",
+    )
+    parser.add_argument(
+        "--splopa_init_range",
+        type=float,
+        default=1e-4,
+        help="Range of initialisation for SPLoPA adapte .",
+    )
+    parser.add_argument(
+        "--adapter_learning_rate",
+        type=float,
+        default=1e-3,
+        help="Learning rate for parameters in the Structured Pruning Low-rank PHM Adapter.",
+    )
+
     return parser
 
 
 def main_single(args):
-    short_name = f"{args.model_type}_{args.data_dir}_method-{args.pruning_method}_threshold-{args.final_threshold}_lambda-{args.final_lambda}_teacher-{args.teacher_type or 'None'}"
+    short_name = f"splopa_{args.model_type}_{args.data_dir}_method-{args.pruning_method}_threshold-{args.final_threshold}_lambda-{args.final_lambda}_teacher-{args.teacher_type or 'None'}"
     print(f"HP NAME {short_name}")
 
     args.output_dir = os.path.join(args.output_dir, short_name)
@@ -1537,6 +1550,11 @@ def main_single(args):
         shuffling_method=args.shuffling_method,
         in_shuffling_group=args.in_shuffling_group,
         out_shuffling_group=args.out_shuffling_group,
+        num_splopa_prototypes=args.num_splopa_prototypes,
+        splopa_prototype_rank=args.splopa_prototype_rank,
+        shared_splopa_prototypes=not args.splopa_prototypes_not_shared,
+        shared_splopa_pos_weights=args.splopa_pos_weights_shared,
+        splopa_init_range=args.splopa_init_range,
     )
 
     tokenizer = tokenizer_class.from_pretrained(
@@ -1549,6 +1567,16 @@ def main_single(args):
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
         cache_dir=args.cache_dir if args.cache_dir else None,
+    )
+
+    logger.info("***** Counting parameters *****")
+    count_parameters(
+        model.state_dict(),
+        args.pruning_method,
+        args.final_threshold,
+        args.mask_block_rows,
+        args.mask_block_cols,
+        args.ampere_pruning_method,
     )
 
     if args.teacher_type is not None:
@@ -1666,17 +1694,9 @@ def main():
     if args.regularization == "null":
         args.regularization = None
 
-    # sizes = [(2, 1), (8, 1), (32, 1), (128, 1), (4, 4), (8, 8), (32, 32), (1, 2), (1, 8), (1, 32), (1, 128)][::]
-    # sizes = [(32, 32), (16, 16), (64, 64)]
-    # for size in sizes[:1]:
     single_args = copy.deepcopy(args)
-    # single_args.mask_block_rows = 32
-    # single_args.mask_block_cols = 32
 
-    # try:
     main_single(single_args)
-    # except Exception as e:
-    #    print(e)
 
 
 if __name__ == "__main__":

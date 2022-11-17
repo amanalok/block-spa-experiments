@@ -16,37 +16,38 @@ def try_int(val):
 
 
 if __name__ == "__main__":
-    df = parse_excel_hparams(sheet_name="Details - MNLI")
+    df = parse_excel_hparams(sheet_name="Details - SQuAD", remove_distil=True, remove_global=True)
 
     logs_dir = Path("remote/scripts/logs/baselines")
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     processes = []
     for i, row in df.iterrows():
-        identifier = f"{row['EXP ID']}_{row['Effective encoder remain weights %']:.2f}%"
-        # if row["Effective encoder remain weights %"] <= 100:
-        #     continue
+        identifier = f"{row['EXP ID']}_{row['Effective encoder remain weights %']:.1f}%"
 
+        # Select a particular run based on its id here:
         if identifier not in {
-            "magnitude_1.0_*_1_1_null_0._3e-5_0._magnitude_null_0._6_epochs_60.06%"
+            # Corresponds to row 5 in /hparams/hyperparameters.xlsx sheet "Details - SQuAD"
+            "magnitude_1.0_*_1_2_null_0._3e-5_0._magnitude_null_0._10_epochs_90.0%"
         }:
-            # if "magnitude" not in identifier:
+            print(f"Skipping run {i}: {identifier}")
             continue
+
         print(f"Spawning run {i}: {identifier}")
-        # continue
         command = [
             "python",
-            # "block_movement_pruning/masked_run_glue.py",
-            "remote/scripts/run_mnli.py",
+            "block_movement_pruning/masked_run_squad.py",
             "--identifier",
             identifier,
-            "--task_name",
-            "mnli",
             "--overwrite_output_dir",
             "--output_dir",
-            "runs/mnli-bert-base-uncased-finetuned",
+            "runs/squad-bert-base-uncased-finetuned",
             "--data_dir",
-            "mnli_data",
+            "squad_data",
+            "--train_file",
+            "train-v1.1.json",
+            "--predict_file",
+            "dev-v1.1.json",
             "--do_train",
             "--do_eval",
             "--do_lower_case",
@@ -61,7 +62,7 @@ if __name__ == "__main__":
             *flatten_list(
                 [
                     (f"--{k}", str(try_int(v)))
-                    for k, v in row[8:].to_dict().items()
+                    for k, v in row[5:].to_dict().items()
                     if isinstance(v, str) or not math.isnan(v)
                 ]
             ),
