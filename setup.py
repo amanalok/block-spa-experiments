@@ -7,13 +7,13 @@ def readme():
 
 
 setup(
-    name="block_movement_pruning",
-    version="0.1",
-    description="block_movement_pruning is a python package for experimenting on block-sparse pruned version of popular networks.",
+    name="block-spa-experiments",
+    version="0.2.0",
+    description="Block-based Structured Adapter Pruning experiments on BERT-base.",
     long_description=readme(),
     classifiers=[
         "Development Status :: 3 - Alpha",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: Apache Software License",
         "Programming Language :: Python :: 3.0",
         "Topic :: Text Processing",
     ],
@@ -21,13 +21,8 @@ setup(
     url="",
     author="",
     author_email="",
-    license="MIT",
+    license="Apache 2.0",
     packages=["block_movement_pruning"],
-    entry_points={
-        "console_scripts": [
-            "block_movement_pruning_run=block_movement_pruning.command_line:train_command"
-        ],
-    },
     include_package_data=True,
     zip_safe=False,
 )

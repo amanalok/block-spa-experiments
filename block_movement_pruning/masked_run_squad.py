@@ -1,5 +1,6 @@
 # coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
+# Copyright 2022-present, Lukas Hedegaard.
+# Copyright 2018 The Google AI Language Team Authors  The HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -522,44 +523,7 @@ def train(args, train_dataset, model, tokenizer, teacher=None, mlogger=None):
                     and global_step % args.logging_steps == 0
                 ):
                     metrics_to_track = {"threshold": threshold}
-                    # for name, param in model.named_parameters():
-                    #     try:
-                    #         if not param.requires_grad:
-                    #             continue
-                    #         metrics_to_track.update(
-                    #             {
-                    #                 "parameter_mean/" + name: param.data.mean(),
-                    #                 "parameter_std/" + name: param.data.std(),
-                    #                 "parameter_min/" + name: param.data.min(),
-                    #                 "parameter_max/" + name: param.data.max(),
-                    #             }
-                    #         )
-                    #         if "pooler" in name:
-                    #             continue
-                    #         metrics_to_track.update(
-                    #             {
-                    #                 "grad_mean/" + name: param.grad.data.mean(),
-                    #                 "grad_std/" + name: param.grad.data.std(),
-                    #             }
-                    #         )
-                    #         if (
-                    #             args.regularization is not None
-                    #             and "mask_scores" in name
-                    #         ):
-                    #             if args.regularization == "l1":
-                    #                 perc = (
-                    #                     torch.sigmoid(param) > threshold
-                    #                 ).sum().item() / param.numel()
-                    #             elif args.regularization == "l0":
-                    #                 perc = (
-                    #                     torch.sigmoid(param - 2 / 3 * np.log(0.1 / 1.1))
-                    #                 ).sum().item() / param.numel()
-                    #             metrics_to_track.update(
-                    #                 {f"retained_weights_perc/{name}": perc}
-                    #             )
-
-                    #     except AttributeError as e:
-                    #         print(f"name error with {name}", e)
+                    
                     mlogger.add_scalars(
                         main_tag="train", metric_dict=metrics_to_track, step=global_step
                     )
@@ -1730,17 +1694,9 @@ def main():
     if args.regularization == "null":
         args.regularization = None
 
-    # sizes = [(2, 1), (8, 1), (32, 1), (128, 1), (4, 4), (8, 8), (32, 32), (1, 2), (1, 8), (1, 32), (1, 128)][::]
-    # sizes = [(32, 32), (16, 16), (64, 64)]
-    # for size in sizes[:1]:
     single_args = copy.deepcopy(args)
-    # single_args.mask_block_rows = 32
-    # single_args.mask_block_cols = 32
 
-    # try:
     main_single(single_args)
-    # except Exception as e:
-    #    print(e)
 
 
 if __name__ == "__main__":

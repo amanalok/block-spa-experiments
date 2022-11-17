@@ -1,4 +1,5 @@
 # coding=utf-8
+# Copyright 2022-present, Lukas Hedegaard.
 # Copyright 2020-present, the HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -76,9 +77,7 @@ def ampere_pattern(device=None):
 
 
 class DimensionShuffler(nn.Module):
-    def __init__(
-        self, in_features, out_features, in_features_group=4, out_features_group=4
-    ):
+    def __init__(self, in_features, out_features, in_features_group=4, out_features_group=4):
         super().__init__()
         self.in_features = in_features
         self.in_features_group = in_features_group
@@ -99,9 +98,7 @@ class DimensionShuffler(nn.Module):
         # out_permutations = self.all_permutations(out_features_group)[2]
         # self.register_buffer("out_permutations", out_permutations)
 
-        in_permutation_scores = torch.randn(
-            in_features // in_features_group, in_features_group - 1
-        )
+        in_permutation_scores = torch.randn(in_features // in_features_group, in_features_group - 1)
         out_permutation_scores = torch.randn(
             out_features // out_features_group, out_features_group - 1
         )
@@ -123,12 +120,8 @@ class DimensionShuffler(nn.Module):
         return rot, rot.transpose(1, 2)
 
     def forward(self, input, weight, mask, temperature):
-        in_permutations, in_permutations_inverse = self.rotate_matrices(
-            self.in_permutation_scores
-        )
-        out_permutations, out_permutations_inverse = self.rotate_matrices(
-            self.out_permutation_scores
-        )
+        in_permutations, in_permutations_inverse = self.rotate_matrices(self.in_permutation_scores)
+        out_permutations, out_permutations_inverse = self.rotate_matrices(self.out_permutation_scores)
         # in_permutations = self.permutation_mix(self.in_permutation_scores, self.in_permutations, temperature, self.training)
         # out_permutations = self.permutation_mix(self.out_permutation_scores, self.out_permutations, temperature, self.training)
 
@@ -146,9 +139,7 @@ class DimensionShuffler(nn.Module):
         )
 
     @staticmethod
-    def permutation_mix(
-        permutation_scores, permutations, temperature: float, training: bool
-    ):
+    def permutation_mix(permutation_scores, permutations, temperature: float, training: bool):
         if training:  # True
             s = F.softmax(permutation_scores * temperature, dim=-1)
         else:
@@ -264,9 +255,7 @@ class DimensionShuffler(nn.Module):
 
 
 class MaskDimensionShuffler(nn.Module):
-    def __init__(
-        self, in_features, out_features, in_features_group=4, out_features_group=4
-    ):
+    def __init__(self, in_features, out_features, in_features_group=4, out_features_group=4):
         super().__init__()
         self.in_features = in_features
         self.in_features_group = in_features_group
@@ -290,9 +279,7 @@ class MaskDimensionShuffler(nn.Module):
             assert False
 
         in_permutation_scores = torch.randn(in_features // in_features_group, score_dim)
-        out_permutation_scores = torch.randn(
-            out_features // out_features_group, score_dim
-        )
+        out_permutation_scores = torch.randn(out_features // out_features_group, score_dim)
 
         self.in_permutation_scores = nn.Parameter(in_permutation_scores)
         self.out_permutation_scores = nn.Parameter(out_permutation_scores)
@@ -694,9 +681,7 @@ class MaskedLinear(nn.Linear):
         )
 
         if self.shuffler is not None:
-            return (
-                self.shuffler(input, self.weight, mask, shuffle_temperature) + self.bias
-            )
+            return self.shuffler(input, self.weight, mask, shuffle_temperature) + self.bias
         else:
             if self.mask_shuffler is not None:
                 mask = self.mask_shuffler(mask, shuffle_temperature)
