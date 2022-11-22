@@ -1,6 +1,10 @@
 # Block-based Structured Adapter Pruning Experiments
 
-This repository contains experiments for the block-based SPA, __Structured Pruning Low-rank Adapter (SPLoRA)__, proposed in `link-to-paper-comping-up`  using various structured pruning methods, for weight-based transfer learning of BERT on the SQuAD question-answering dataset.
+<a href="https://arxiv.org/abs/2211.10155">
+<img src="http://img.shields.io/badge/paper-arxiv.2211.10155-B31B1B.svg" height="20" >
+</a>
+
+This repository contains experiments for the block-based SPA, __Structured Pruning Low-rank Adapter (SPLoRA)__, proposed in [Structured Pruning Adapters](https://arxiv.org/abs/2211.10155) using various structured pruning methods, for weight-based transfer learning of BERT on the SQuAD question-answering dataset.
 
 
 <div align="center">
