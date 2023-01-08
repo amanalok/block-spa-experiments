@@ -42,3 +42,20 @@ To select and spawn a run, please follow these steps:
 3. Modify [scripts/run_squad_from_excel_sheet.py](scripts/run_squad_from_excel_sheet.py) accordingly. Note that if multiple runs are specified, they will be spawned in each their own process.
 4. Run `python scripts/run_squad_from_excel_sheet.py`.
 
+## Code Navigation
+
+Following are details about the different components of this code repository:
+
+* `bert-base-uncased`
+
+    1. `config.json`:
+
+    2. `download.sh`:
+
+* `block_movement_pruning`
+
+* `emmental`
+
+* `hparams`
+
+* `scripts`
