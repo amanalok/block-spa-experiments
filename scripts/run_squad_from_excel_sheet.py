@@ -4,6 +4,8 @@ from hparams.parse_hparams import parse_excel_hparams
 import math
 from pathlib import Path
 
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
+
 
 def flatten_list(original_list):
     return [element for sublist in original_list for element in sublist]

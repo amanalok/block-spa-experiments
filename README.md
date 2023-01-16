@@ -59,3 +59,25 @@ Following are details about the different components of this code repository:
 * `hparams`
 
 * `scripts`
+
+## Errors Found
+
+Fix the below:
+
+* ``` ModuleNotFoundError: No module named 'pandas' ```
+
+* ``` ImportError: Missing optional dependency 'openpyxl'.  Use pip or conda to install openpyxl. ```
+
+* ``` ModuleNotFoundError: No module named 'transformers' ```
+
+* `OMP: Error #15: Initializing libiomp5.dylib, but found libomp.dylib already initialized.
+OMP: Hint This means that multiple copies of the OpenMP runtime have been linked into the program. That is dangerous, since it can degrade performance or cause incorrect results. The best thing to do is to ensure that only a single OpenMP runtime is linked into the process, e.g. by avoiding static linking of the OpenMP runtime in any library. As an unsafe, unsupported, undocumented workaround you can set the environment variable KMP_DUPLICATE_LIB_OK=TRUE to allow the program to continue to execute, but that may cause crashes or silently produce incorrect results. For more information, please see http://www.intel.com/software/products/support/.`
+
+* `Traceback (most recent call last):
+  File "/Users/amanalok/SelfStudy/Code Repos/block-spa-experiments/block_movement_pruning/masked_run_squad.py", line 32, in <module>
+    from emmental import MaskedBertConfig, MaskedBertForQuestionAnswering
+  File "/Users/amanalok/SelfStudy/Code Repos/block-spa-experiments/emmental/__init__.py", line 3, in <module>
+    from .modeling_bert_masked import (
+  File "/Users/amanalok/SelfStudy/Code Repos/block-spa-experiments/emmental/modeling_bert_masked.py", line 32, in <module>
+    from transformers.modeling_bert import ACT2FN, load_tf_weights_in_bert
+ModuleNotFoundError: No module named 'transformers.modeling_bert'`
